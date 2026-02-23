@@ -2,6 +2,7 @@
 
 import { useSearchParams, useRouter } from "next/navigation";
 import { useEffect, useState, Suspense } from "react";
+import { Sparkline } from "./sparkline";
 
 function Card({ title, icon, children, loading }: { title: string; icon: string; children: React.ReactNode; loading: boolean }) {
   return (
@@ -77,6 +78,7 @@ function DashboardContent() {
   const [scanning, setScanning] = useState(false);
   const [expandedAction, setExpandedAction] = useState<number | null>(null);
   const [hoursBack, setHoursBack] = useState(24);
+  const [trends, setTrends] = useState<any[]>([]);
 
   const tenantId = searchParams.get("tenantId") ?? "";
   const subscriptionId = searchParams.get("subscriptionId") ?? "";
@@ -101,6 +103,11 @@ function DashboardContent() {
   useEffect(() => {
     if (!tenantId || !userToken) { router.push("/"); return; }
     fetchData(hoursBack);
+    // Fetch trends
+    fetch(`/api/trends?tenantId=${encodeURIComponent(tenantId)}&days=30`)
+      .then((r) => r.json())
+      .then((d) => setTrends(d.trends ?? []))
+      .catch(() => {});
   }, [tenantId, subscriptionId, userToken, router]);
 
   const handleScan = async (e: React.FormEvent) => {
@@ -190,6 +197,12 @@ function DashboardContent() {
                     style={{ width: `${(score.currentScore / (score.maxScore || 100)) * 100}%` }}
                   ></div>
                 </div>
+                {trends.length > 1 && (
+                  <div className="mt-3">
+                    <p className="text-xs text-gray-500 mb-1">30-day trend</p>
+                    <Sparkline data={trends.map((t: any) => t.secure_score_pct ?? 0)} color="#3b82f6" />
+                  </div>
+                )}
               </div>
             ) : (
               <p className="text-gray-500 text-sm">Requires app registration with SecurityEvents.Read.All</p>
@@ -207,6 +220,11 @@ function DashboardContent() {
                 </div>
               )}
             />
+            {trends.length > 1 && (
+              <div className="mt-2">
+                <Sparkline data={trends.map((t: any) => t.defender_alert_count ?? 0)} color="#ef4444" />
+              </div>
+            )}
           </Card>
 
           <Card title="Risky Users" icon="👤" loading={loading}>

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callTool } from "@/lib/mcp-client";
+import { saveSnapshot } from "@/lib/db";
 
 export async function POST(req: NextRequest) {
   const { tenantId, subscriptionId, userToken, clientId, clientSecret, hoursBack = 24 } = await req.json();
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest) {
     r.status === "fulfilled" ? r.value : { error: (r as PromiseRejectedResult).reason?.message ?? "Failed" }
   );
 
-  return NextResponse.json({
+  const response = {
     alerts,
     secureScore,
     riskyUsers,
@@ -53,5 +54,14 @@ export async function POST(req: NextRequest) {
     dataPosture,
     accessStatus,
     timestamp: new Date().toISOString(),
-  });
+  };
+
+  // Auto-save snapshot for trend tracking
+  try {
+    saveSnapshot(tenantId, response);
+  } catch (e) {
+    console.error("Snapshot save failed:", e);
+  }
+
+  return NextResponse.json(response);
 }
