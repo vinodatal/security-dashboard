@@ -16,6 +16,7 @@ const TOOL_NAMES = [
   "get_intune_devices",
   "get_purview_alerts",
   "get_insider_risk_alerts",
+  "detect_privileged_user_risks",
 ];
 
 let pollCount = 0;
@@ -43,6 +44,7 @@ async function pollTenant(tenant: any): Promise<void> {
       callTool("get_intune_devices", { ...appArgs, complianceState: "noncompliant", top: 20 }, mcpEnv),
       callTool("get_purview_alerts", { ...appArgs, top: 20 }, mcpEnv),
       callTool("get_insider_risk_alerts", { ...appArgs, top: 20 }, mcpEnv),
+      callTool("detect_privileged_user_risks", toolArgs, mcpEnv),
     ]);
 
     // Log per-tool results
@@ -59,11 +61,11 @@ async function pollTenant(tenant: any): Promise<void> {
     });
     console.log(`[${ts()}] [poll] Tenant ${label} — tool results:\n${toolResults.join("\n")}`);
 
-    const [alerts, secureScore, riskyUsers, signInLogs, intuneDevices, purviewAlerts, insiderRiskAlerts] = results.map(
+    const [alerts, secureScore, riskyUsers, signInLogs, intuneDevices, purviewAlerts, insiderRiskAlerts, adminRisks] = results.map(
       (r) => (r.status === "fulfilled" ? r.value : { error: (r as PromiseRejectedResult).reason?.message ?? "Failed" })
     );
 
-    const dashboardData = { alerts, secureScore, riskyUsers, signInLogs, intuneDevices, purviewAlerts, insiderRiskAlerts };
+    const dashboardData = { alerts, secureScore, riskyUsers, signInLogs, intuneDevices, purviewAlerts, insiderRiskAlerts, adminRisks };
 
     // Save snapshot
     const snapshotId = saveSnapshot(tenantId, dashboardData);
