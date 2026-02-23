@@ -79,6 +79,8 @@ function DashboardContent() {
   const [expandedAction, setExpandedAction] = useState<number | null>(null);
   const [hoursBack, setHoursBack] = useState(24);
   const [trends, setTrends] = useState<any[]>([]);
+  const [alertRules, setAlertRules] = useState<any[]>([]);
+  const [alertHistory, setAlertHistory] = useState<any[]>([]);
 
   const tenantId = searchParams.get("tenantId") ?? "";
   const subscriptionId = searchParams.get("subscriptionId") ?? "";
@@ -107,6 +109,10 @@ function DashboardContent() {
     fetch(`/api/trends?tenantId=${encodeURIComponent(tenantId)}&days=30`)
       .then((r) => r.json())
       .then((d) => setTrends(d.trends ?? []))
+      .catch(() => {});
+    fetch(`/api/alert-rules?tenantId=${encodeURIComponent(tenantId)}`)
+      .then((r) => r.json())
+      .then((d) => { setAlertRules(d.rules ?? []); setAlertHistory(d.history ?? []); })
       .catch(() => {});
   }, [tenantId, subscriptionId, userToken, router]);
 
@@ -446,6 +452,100 @@ function DashboardContent() {
             )}
           </div>
         )}
+
+        {/* Alert Rules */}
+        <div className="bg-gray-900 rounded-xl border border-gray-800 p-5 mb-4">
+          <h2 className="text-lg font-semibold text-white mb-4">🔔 Alert Rules</h2>
+          <form onSubmit={async (e) => {
+            e.preventDefault();
+            const form = e.target as HTMLFormElement;
+            const fd = new FormData(form);
+            await fetch("/api/alert-rules", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                tenantId,
+                name: fd.get("name"),
+                metric: fd.get("metric"),
+                operator: fd.get("operator"),
+                threshold: Number(fd.get("threshold")),
+                notifyType: fd.get("notifyType"),
+                notifyTarget: fd.get("notifyTarget"),
+                clientId,
+                clientSecret,
+                userToken,
+              }),
+            });
+            form.reset();
+            // Refresh rules
+            const res = await fetch(`/api/alert-rules?tenantId=${encodeURIComponent(tenantId)}`);
+            const d = await res.json();
+            setAlertRules(d.rules ?? []);
+            setAlertHistory(d.history ?? []);
+          }} className="grid grid-cols-1 md:grid-cols-6 gap-2 mb-4">
+            <input name="name" placeholder="Rule name" required className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500" />
+            <select name="metric" className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm">
+              <option value="secure_score_pct">Secure Score %</option>
+              <option value="defender_alerts">Defender Alerts</option>
+              <option value="defender_alerts_high">High Severity Alerts</option>
+              <option value="risky_users">Risky Users</option>
+              <option value="noncompliant_devices">Non-Compliant Devices</option>
+              <option value="purview_alerts">Purview Alerts</option>
+              <option value="insider_risk_alerts">Insider Risk Alerts</option>
+            </select>
+            <select name="operator" className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm">
+              <option value="lt">drops below</option>
+              <option value="gt">exceeds</option>
+              <option value="gte">at or above</option>
+              <option value="lte">at or below</option>
+            </select>
+            <input name="threshold" type="number" placeholder="Threshold" required className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500" />
+            <div className="flex gap-2">
+              <select name="notifyType" className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm">
+                <option value="webhook">Webhook (Teams/Slack)</option>
+                <option value="email">Email</option>
+              </select>
+            </div>
+            <div className="flex gap-2">
+              <input name="notifyTarget" placeholder="Webhook URL or email" required className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500" />
+              <button type="submit" className="px-4 py-2 bg-green-700 hover:bg-green-600 text-white rounded-lg text-sm font-medium whitespace-nowrap">Add</button>
+            </div>
+          </form>
+          {alertRules.length > 0 && (
+            <div className="space-y-2 mb-4">
+              <p className="text-xs font-medium text-gray-400">Active rules:</p>
+              {alertRules.map((r: any) => (
+                <div key={r.id} className="flex items-center justify-between bg-gray-800 rounded-lg px-3 py-2">
+                  <span className="text-sm text-gray-300">{r.name}: {r.metric} {r.operator} {r.threshold}</span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-gray-500">{r.notify_type}: {r.notify_target.slice(0, 30)}</span>
+                    <button onClick={async () => {
+                      await fetch(`/api/alert-rules?id=${r.id}`, { method: "DELETE" });
+                      setAlertRules((prev: any[]) => prev.filter((x: any) => x.id !== r.id));
+                    }} className="text-xs text-red-400 hover:text-red-300">✕</button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          {alertHistory.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-medium text-gray-400">Recent alerts:</p>
+              {alertHistory.map((h: any, i: number) => (
+                <div key={i} className="flex items-center justify-between bg-gray-800 rounded-lg px-3 py-2">
+                  <span className="text-sm text-gray-300">{h.message}</span>
+                  <span className="text-xs text-gray-500">{new Date(h.triggered_at).toLocaleString()}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {alertRules.length === 0 && alertHistory.length === 0 && (
+            <p className="text-gray-500 text-sm">No alert rules configured. Add one above to start monitoring.</p>
+          )}
+          <p className="text-xs text-gray-600 mt-3">
+            Background scheduler polls every 15 minutes. Start it with: <code className="bg-gray-800 px-1 rounded">npm run scheduler</code>
+          </p>
+        </div>
 
         {/* Repo Scan */}
         <div className="bg-gray-900 rounded-xl border border-gray-800 p-5">

@@ -42,6 +42,44 @@ export function getDb(): Database.Database {
       panel TEXT NOT NULL,
       data TEXT NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS monitored_tenants (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id TEXT NOT NULL UNIQUE,
+      client_id TEXT,
+      client_secret TEXT,
+      user_token TEXT,
+      poll_interval_min INTEGER NOT NULL DEFAULT 15,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      last_poll_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS alert_rules (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      tenant_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      metric TEXT NOT NULL,
+      operator TEXT NOT NULL,
+      threshold REAL NOT NULL,
+      notify_type TEXT NOT NULL DEFAULT 'webhook',
+      notify_target TEXT NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      last_triggered_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS alert_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      rule_id INTEGER NOT NULL REFERENCES alert_rules(id) ON DELETE CASCADE,
+      tenant_id TEXT NOT NULL,
+      triggered_at TEXT NOT NULL DEFAULT (datetime('now')),
+      metric TEXT NOT NULL,
+      value REAL NOT NULL,
+      threshold REAL NOT NULL,
+      message TEXT NOT NULL,
+      notified INTEGER NOT NULL DEFAULT 0
+    );
   `);
 
   return db;
@@ -133,4 +171,83 @@ export function getTrends(
     ORDER BY captured_at ASC
   `);
   return stmt.all(tenantId, `-${days} days`);
+}
+
+// --- Monitored Tenants ---
+
+export function addMonitoredTenant(tenant: {
+  tenantId: string;
+  clientId?: string;
+  clientSecret?: string;
+  userToken?: string;
+  pollIntervalMin?: number;
+}) {
+  const db = getDb();
+  db.prepare(`
+    INSERT OR REPLACE INTO monitored_tenants (tenant_id, client_id, client_secret, user_token, poll_interval_min)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(tenant.tenantId, tenant.clientId ?? null, tenant.clientSecret ?? null, tenant.userToken ?? null, tenant.pollIntervalMin ?? 15);
+}
+
+export function getMonitoredTenants(): any[] {
+  return getDb().prepare("SELECT * FROM monitored_tenants WHERE enabled = 1").all();
+}
+
+export function updateLastPoll(tenantId: string) {
+  getDb().prepare("UPDATE monitored_tenants SET last_poll_at = datetime('now') WHERE tenant_id = ?").run(tenantId);
+}
+
+// --- Alert Rules ---
+
+export function createAlertRule(rule: {
+  tenantId: string;
+  name: string;
+  metric: string;
+  operator: string;
+  threshold: number;
+  notifyType: string;
+  notifyTarget: string;
+}) {
+  const db = getDb();
+  const result = db.prepare(`
+    INSERT INTO alert_rules (tenant_id, name, metric, operator, threshold, notify_type, notify_target)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(rule.tenantId, rule.name, rule.metric, rule.operator, rule.threshold, rule.notifyType, rule.notifyTarget);
+  return result.lastInsertRowid;
+}
+
+export function getAlertRules(tenantId: string): any[] {
+  return getDb().prepare("SELECT * FROM alert_rules WHERE tenant_id = ? AND enabled = 1").all(tenantId);
+}
+
+export function deleteAlertRule(id: number) {
+  getDb().prepare("DELETE FROM alert_rules WHERE id = ?").run(id);
+}
+
+// --- Alert History ---
+
+export function saveAlertEvent(event: {
+  ruleId: number;
+  tenantId: string;
+  metric: string;
+  value: number;
+  threshold: number;
+  message: string;
+}) {
+  const db = getDb();
+  db.prepare(`
+    INSERT INTO alert_history (rule_id, tenant_id, metric, value, threshold, message)
+    VALUES (?, ?, ?, ?, ?, ?)
+  `).run(event.ruleId, event.tenantId, event.metric, event.value, event.threshold, event.message);
+  db.prepare("UPDATE alert_rules SET last_triggered_at = datetime('now') WHERE id = ?").run(event.ruleId);
+}
+
+export function getAlertHistory(tenantId: string, limit = 50): any[] {
+  return getDb().prepare(`
+    SELECT ah.*, ar.name as rule_name, ar.notify_type
+    FROM alert_history ah
+    JOIN alert_rules ar ON ah.rule_id = ar.id
+    WHERE ah.tenant_id = ?
+    ORDER BY ah.triggered_at DESC LIMIT ?
+  `).all(tenantId, limit);
 }
