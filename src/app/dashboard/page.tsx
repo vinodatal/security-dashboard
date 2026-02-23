@@ -160,6 +160,7 @@ function DashboardContent() {
   const recommendations = data?.recommendations;
   const insiderRisk = data?.insiderRiskAlerts;
   const dataPosture = data?.dataPosture;
+  const adminRisks = data?.adminRisks;
 
   return (
     <div className="min-h-screen bg-gray-950 p-6">
@@ -333,8 +334,8 @@ function DashboardContent() {
           </Card>
         </div>
 
-        {/* Row 3: Insider Risk, Data Security Posture */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        {/* Row 3: Insider Risk, Admin Risks, Data Security Posture */}
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-4">
           <Card title="Insider Risk Alerts" icon="🕵️" loading={loading}>
             <ItemList
               items={insiderRisk}
@@ -349,6 +350,50 @@ function DashboardContent() {
                 </div>
               )}
             />
+          </Card>
+
+          <Card title="Privileged Admin Risks" icon="👑" loading={loading}>
+            {adminRisks?.error ? (
+              <p className="text-red-400 text-sm">⚠ {typeof adminRisks.error === "string" ? adminRisks.error : JSON.stringify(adminRisks.error)}</p>
+            ) : adminRisks?.summary ? (
+              <div>
+                <div className="flex gap-4 mb-3">
+                  <div className="text-center">
+                    <span className="text-2xl font-bold text-white">{adminRisks.summary.totalAdmins}</span>
+                    <p className="text-xs text-gray-500">Admins</p>
+                  </div>
+                  {adminRisks.summary.critical > 0 && (
+                    <div className="text-center">
+                      <span className="text-2xl font-bold text-red-400">{adminRisks.summary.critical}</span>
+                      <p className="text-xs text-gray-500">Critical</p>
+                    </div>
+                  )}
+                  {adminRisks.summary.high > 0 && (
+                    <div className="text-center">
+                      <span className="text-2xl font-bold text-yellow-400">{adminRisks.summary.high}</span>
+                      <p className="text-xs text-gray-500">High</p>
+                    </div>
+                  )}
+                </div>
+                {adminRisks.findings?.length > 0 ? (
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto">
+                    {adminRisks.findings.map((f: any, i: number) => (
+                      <div key={i} className="bg-gray-800 rounded px-3 py-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-gray-300 truncate mr-2">{f.user}</span>
+                          <SeverityBadge severity={f.severity} />
+                        </div>
+                        <p className="text-xs text-gray-500 mt-0.5">{f.detail}</p>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-green-400 text-sm">✓ No admin account risks found</p>
+                )}
+              </div>
+            ) : (
+              <p className="text-gray-500 text-sm">No admin risk data</p>
+            )}
           </Card>
 
           <Card title="Data Security Posture" icon="🏗️" loading={loading}>
@@ -484,33 +529,34 @@ function DashboardContent() {
             const d = await res.json();
             setAlertRules(d.rules ?? []);
             setAlertHistory(d.history ?? []);
-          }} className="grid grid-cols-1 md:grid-cols-6 gap-2 mb-4">
-            <input name="name" placeholder="Rule name" required className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500" />
-            <select name="metric" className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm">
-              <option value="secure_score_pct">Secure Score %</option>
-              <option value="defender_alerts">Defender Alerts</option>
-              <option value="defender_alerts_high">High Severity Alerts</option>
-              <option value="risky_users">Risky Users</option>
-              <option value="noncompliant_devices">Non-Compliant Devices</option>
-              <option value="purview_alerts">Purview Alerts</option>
-              <option value="insider_risk_alerts">Insider Risk Alerts</option>
-            </select>
-            <select name="operator" className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm">
-              <option value="lt">drops below</option>
-              <option value="gt">exceeds</option>
-              <option value="gte">at or above</option>
-              <option value="lte">at or below</option>
-            </select>
-            <input name="threshold" type="number" placeholder="Threshold" required className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500" />
-            <div className="flex gap-2">
-              <select name="notifyType" className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm">
+          }} className="space-y-2 mb-4">
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
+              <input name="name" placeholder="Rule name" required className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500" />
+              <select name="metric" className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm">
+                <option value="secure_score_pct">Secure Score %</option>
+                <option value="defender_alerts">Defender Alerts</option>
+                <option value="defender_alerts_high">High Severity Alerts</option>
+                <option value="risky_users">Risky Users</option>
+                <option value="noncompliant_devices">Non-Compliant Devices</option>
+                <option value="purview_alerts">Purview Alerts</option>
+                <option value="insider_risk_alerts">Insider Risk Alerts</option>
+                <option value="admin_risks">Admin Risks</option>
+              </select>
+              <select name="operator" className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm">
+                <option value="lt">drops below</option>
+                <option value="gt">exceeds</option>
+                <option value="gte">at or above</option>
+                <option value="lte">at or below</option>
+              </select>
+              <input name="threshold" type="number" placeholder="Threshold" required className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500" />
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
+              <select name="notifyType" className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm">
                 <option value="webhook">Webhook (Teams/Slack)</option>
                 <option value="email">Email</option>
               </select>
-            </div>
-            <div className="flex gap-2">
-              <input name="notifyTarget" placeholder="Webhook URL or email" required className="flex-1 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500" />
-              <button type="submit" className="px-4 py-2 bg-green-700 hover:bg-green-600 text-white rounded-lg text-sm font-medium whitespace-nowrap">Add</button>
+              <input name="notifyTarget" placeholder="Webhook URL or email" required className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500" />
+              <button type="submit" className="px-4 py-2 bg-green-700 hover:bg-green-600 text-white rounded-lg text-sm font-medium">Add Rule</button>
             </div>
           </form>
           {alertRules.length > 0 && (

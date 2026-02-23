@@ -42,13 +42,14 @@ export async function POST(req: NextRequest) {
     callTool("get_security_recommendations", { ...appArgs, top: 10 }, mcpEnv),
     callTool("get_insider_risk_alerts", { ...appArgs, top: 20 }, mcpEnv),
     callTool("get_data_security_posture", appArgs, mcpEnv),
+    callTool("detect_privileged_user_risks", toolArgs, mcpEnv),
     callTool("verify_access", toolArgs, mcpEnv),
   ]);
 
   const [
     alerts, secureScore, riskyUsers, signInLogs,
     intuneDevices, purviewAlerts, recommendations,
-    insiderRiskAlerts, dataPosture, accessStatus
+    insiderRiskAlerts, dataPosture, adminRisks, accessStatus
   ] = results.map((r) =>
     r.status === "fulfilled" ? r.value : { error: (r as PromiseRejectedResult).reason?.message ?? "Failed" }
   );
@@ -63,6 +64,7 @@ export async function POST(req: NextRequest) {
     recommendations,
     insiderRiskAlerts,
     dataPosture,
+    adminRisks,
     accessStatus,
     timestamp: new Date().toISOString(),
   };
