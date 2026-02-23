@@ -2,14 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { callTool } from "@/lib/mcp-client";
 import { saveSnapshot, getTenantCredentials } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
-import { getSessionFromRequest } from "@/app/api/session/route";
+import { getSession } from "@/lib/session";
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const hoursBack = body.hoursBack ?? 24;
 
-  // Read token from httpOnly cookie session
-  const session = getSessionFromRequest(req);
+  const session = getSession(req);
   if (!session) {
     return NextResponse.json({ error: "Not authenticated. Please sign in." }, { status: 401 });
   }
