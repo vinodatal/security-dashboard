@@ -33,8 +33,8 @@ export async function POST(req: NextRequest) {
     }
 
     const appData = await appRes.json();
+    const seen = new Set<string>();
     const apps = (appData.value ?? []).map((app: any) => {
-      // Check which required permissions are configured
       const graphAccess = (app.requiredResourceAccess ?? []).find(
         (r: any) => r.resourceAppId === "00000003-0000-0000-c000-000000000000"
       );
@@ -48,6 +48,10 @@ export async function POST(req: NextRequest) {
         name: app.displayName,
         permissionCount: configuredRoleIds.length,
       };
+    }).filter((a: any) => {
+      if (seen.has(a.clientId)) return false;
+      seen.add(a.clientId);
+      return true;
     });
 
     return NextResponse.json({ apps });
