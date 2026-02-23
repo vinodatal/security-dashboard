@@ -3,7 +3,9 @@ import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js"
 import path from "path";
 
 const MCP_SERVER_PATH = path.resolve(process.cwd(), "../security-scanner-sample/dist/server.js");
-const TOOL_TIMEOUT_MS = 30_000; // 30s per tool call
+const DEFAULT_TIMEOUT_MS = 30_000;
+const SLOW_TOOLS = new Set(["detect_privileged_user_risks", "search_purview_audit", "get_data_security_posture"]);
+const SLOW_TIMEOUT_MS = 90_000;
 
 // Persistent client pool
 const pool = new Map<string, { client: Client; lastUsed: number }>();
@@ -60,9 +62,10 @@ export async function callTool(
 ) {
   const client = await getClient(env);
   try {
+    const timeoutMs = SLOW_TOOLS.has(toolName) ? SLOW_TIMEOUT_MS : DEFAULT_TIMEOUT_MS;
     const result = await withTimeout(
       client.callTool({ name: toolName, arguments: args }),
-      TOOL_TIMEOUT_MS,
+      timeoutMs,
       toolName
     );
     const text = result.content as Array<{ type: string; text: string }>;
@@ -75,14 +78,15 @@ export async function callTool(
   } catch (e: any) {
     // If connection died, remove from pool and retry once
     if (e.message?.includes("timed out")) {
-      return { error: `${toolName} timed out (>${TOOL_TIMEOUT_MS / 1000}s)` };
+      return { error: `${toolName} timed out (>${(SLOW_TOOLS.has(toolName) ? SLOW_TIMEOUT_MS : DEFAULT_TIMEOUT_MS) / 1000}s)` };
     }
     pool.delete(envKey(env));
     try {
       const client2 = await getClient(env);
+      const timeoutMs2 = SLOW_TOOLS.has(toolName) ? SLOW_TIMEOUT_MS : DEFAULT_TIMEOUT_MS;
       const result = await withTimeout(
         client2.callTool({ name: toolName, arguments: args }),
-        TOOL_TIMEOUT_MS,
+        timeoutMs2,
         toolName
       );
       const text = result.content as Array<{ type: string; text: string }>;
