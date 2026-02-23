@@ -81,6 +81,7 @@ function DashboardContent() {
   const [trends, setTrends] = useState<any[]>([]);
   const [alertRules, setAlertRules] = useState<any[]>([]);
   const [alertHistory, setAlertHistory] = useState<any[]>([]);
+  const [compliance, setCompliance] = useState<any>(null);
 
   const tenantId = searchParams.get("tenantId") ?? "";
   const subscriptionId = searchParams.get("subscriptionId") ?? "";
@@ -113,6 +114,10 @@ function DashboardContent() {
     fetch(`/api/alert-rules?tenantId=${encodeURIComponent(tenantId)}`)
       .then((r) => r.json())
       .then((d) => { setAlertRules(d.rules ?? []); setAlertHistory(d.history ?? []); })
+      .catch(() => {});
+    fetch(`/api/compliance?tenantId=${encodeURIComponent(tenantId)}`)
+      .then((r) => r.json())
+      .then(setCompliance)
       .catch(() => {});
   }, [tenantId, subscriptionId, userToken, router]);
 
@@ -546,6 +551,78 @@ function DashboardContent() {
             Background scheduler polls every 15 minutes. Start it with: <code className="bg-gray-800 px-1 rounded">npm run scheduler</code>
           </p>
         </div>
+
+        {/* Compliance Assessment */}
+        {compliance?.compliance && (
+          <div className="bg-gray-900 rounded-xl border border-gray-800 p-5 mb-4">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="text-lg font-semibold text-white">📜 Compliance Assessment</h2>
+              <a
+                href={`/api/reports?tenantId=${encodeURIComponent(tenantId)}&days=30`}
+                target="_blank"
+                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg"
+              >
+                📄 Export Report
+              </a>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4 mb-4">
+              {compliance.compliance.map((fw: any) => (
+                <div key={fw.framework} className="bg-gray-800 rounded-lg p-4">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-sm font-semibold text-white">{fw.framework}</span>
+                    <span className={`text-lg font-bold ${fw.score >= 70 ? "text-green-400" : fw.score >= 40 ? "text-yellow-400" : "text-red-400"}`}>
+                      {fw.score}%
+                    </span>
+                  </div>
+                  <div className="w-full bg-gray-700 rounded-full h-2 mb-2">
+                    <div
+                      className={`h-2 rounded-full ${fw.score >= 70 ? "bg-green-500" : fw.score >= 40 ? "bg-yellow-500" : "bg-red-500"}`}
+                      style={{ width: `${fw.score}%` }}
+                    ></div>
+                  </div>
+                  <div className="flex gap-3 text-xs">
+                    <span className="text-green-400">{fw.passing} pass</span>
+                    <span className="text-red-400">{fw.failing} fail</span>
+                    <span className="text-yellow-400">{fw.partial} partial</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            {/* Control details — expandable per framework */}
+            <details className="mt-2">
+              <summary className="text-sm text-blue-400 cursor-pointer hover:text-blue-300">View control details</summary>
+              <div className="mt-3 space-y-4">
+                {compliance.compliance.map((fw: any) => (
+                  <div key={fw.framework}>
+                    <h3 className="text-sm font-semibold text-white mb-2">{fw.framework}</h3>
+                    <div className="space-y-1">
+                      {fw.controls.map((c: any) => (
+                        <div key={c.id} className="flex items-center justify-between bg-gray-800 rounded px-3 py-2">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className={`text-xs font-bold ${c.result.status === "pass" ? "text-green-400" : c.result.status === "fail" ? "text-red-400" : c.result.status === "partial" ? "text-yellow-400" : "text-gray-500"}`}>
+                              {c.result.status === "pass" ? "✓" : c.result.status === "fail" ? "✗" : "~"}
+                            </span>
+                            <span className="text-xs text-gray-400">{c.id}</span>
+                            <span className="text-sm text-gray-300 truncate">{c.name}</span>
+                          </div>
+                          <span className="text-xs text-gray-500 shrink-0 ml-2">{c.result.detail}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </details>
+            {compliance.sla && (
+              <div className="mt-4 flex gap-6 text-xs text-gray-500">
+                <span>Monitoring since: {compliance.sla.monitoringSince ? new Date(compliance.sla.monitoringSince).toLocaleDateString() : "—"}</span>
+                <span>Snapshots: {compliance.sla.totalSnapshots}</span>
+                <span>Avg high alerts: {compliance.sla.avgHighAlerts}</span>
+                <span>Alerts triggered: {compliance.sla.totalAlertsTriggered}</span>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Repo Scan */}
         <div className="bg-gray-900 rounded-xl border border-gray-800 p-5">
