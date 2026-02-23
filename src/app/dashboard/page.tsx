@@ -82,6 +82,7 @@ function DashboardContent() {
   const [alertRules, setAlertRules] = useState<any[]>([]);
   const [alertHistory, setAlertHistory] = useState<any[]>([]);
   const [compliance, setCompliance] = useState<any>(null);
+  const [editingRule, setEditingRule] = useState<any>(null);
 
   const tenantId = searchParams.get("tenantId") ?? "";
   const subscriptionId = searchParams.get("subscriptionId") ?? "";
@@ -510,6 +511,10 @@ function DashboardContent() {
             e.preventDefault();
             const form = e.target as HTMLFormElement;
             const fd = new FormData(form);
+            // Delete old rule if editing
+            if (editingRule) {
+              await fetch(`/api/alert-rules?id=${editingRule.id}`, { method: "DELETE" });
+            }
             await fetch("/api/alert-rules", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -524,15 +529,21 @@ function DashboardContent() {
               }),
             });
             form.reset();
-            // Refresh rules
+            setEditingRule(null);
             const res = await fetch(`/api/alert-rules?tenantId=${encodeURIComponent(tenantId)}`);
             const d = await res.json();
             setAlertRules(d.rules ?? []);
             setAlertHistory(d.history ?? []);
           }} className="space-y-2 mb-4">
+            {editingRule && (
+              <div className="flex items-center gap-2 text-xs text-blue-400 mb-1">
+                <span>Editing: {editingRule.name}</span>
+                <button type="button" onClick={() => setEditingRule(null)} className="text-gray-500 hover:text-gray-300">Cancel</button>
+              </div>
+            )}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-              <input name="name" placeholder="Rule name" required className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500" />
-              <select name="metric" className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm">
+              <input name="name" placeholder="Rule name" required defaultValue={editingRule?.name ?? ""} key={`name-${editingRule?.id ?? "new"}`} className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500" />
+              <select name="metric" defaultValue={editingRule?.metric ?? "secure_score_pct"} key={`metric-${editingRule?.id ?? "new"}`} className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm">
                 <option value="secure_score_pct">Secure Score %</option>
                 <option value="defender_alerts">Defender Alerts</option>
                 <option value="defender_alerts_high">High Severity Alerts</option>
@@ -541,35 +552,40 @@ function DashboardContent() {
                 <option value="purview_alerts">Purview Alerts</option>
                 <option value="insider_risk_alerts">Insider Risk Alerts</option>
                 <option value="admin_risks">Admin Risks</option>
+                <option value="admin_no_mfa">Admins Without MFA</option>
               </select>
-              <select name="operator" className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm">
+              <select name="operator" defaultValue={editingRule?.operator ?? "lt"} key={`op-${editingRule?.id ?? "new"}`} className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm">
                 <option value="lt">drops below</option>
                 <option value="gt">exceeds</option>
                 <option value="gte">at or above</option>
                 <option value="lte">at or below</option>
               </select>
-              <input name="threshold" type="number" placeholder="Threshold" required className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500" />
+              <input name="threshold" type="number" placeholder="Threshold" required defaultValue={editingRule?.threshold ?? ""} key={`thresh-${editingRule?.id ?? "new"}`} className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500" />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
-              <select name="notifyType" className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm">
+              <select name="notifyType" defaultValue={editingRule?.notify_type ?? "webhook"} key={`type-${editingRule?.id ?? "new"}`} className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm">
                 <option value="webhook">Webhook (Teams/Slack)</option>
                 <option value="email">Email</option>
               </select>
-              <input name="notifyTarget" placeholder="Webhook URL or email" required className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500" />
-              <button type="submit" className="px-4 py-2 bg-green-700 hover:bg-green-600 text-white rounded-lg text-sm font-medium">Add Rule</button>
+              <input name="notifyTarget" placeholder="Webhook URL or email" required defaultValue={editingRule?.notify_target ?? ""} key={`target-${editingRule?.id ?? "new"}`} className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500" />
+              <button type="submit" className="px-4 py-2 bg-green-700 hover:bg-green-600 text-white rounded-lg text-sm font-medium">{editingRule ? "Update Rule" : "Add Rule"}</button>
             </div>
           </form>
           {alertRules.length > 0 && (
             <div className="space-y-2 mb-4">
-              <p className="text-xs font-medium text-gray-400">Active rules:</p>
+              <p className="text-xs font-medium text-gray-400">Active rules (click to edit):</p>
               {alertRules.map((r: any) => (
-                <div key={r.id} className="flex items-center justify-between bg-gray-800 rounded-lg px-3 py-2">
+                <div key={r.id} className={`flex items-center justify-between bg-gray-800 rounded-lg px-3 py-2 cursor-pointer hover:bg-gray-750 ${editingRule?.id === r.id ? "ring-1 ring-blue-500" : ""}`}
+                  onClick={() => setEditingRule(editingRule?.id === r.id ? null : r)}
+                >
                   <span className="text-sm text-gray-300">{r.name}: {r.metric} {r.operator} {r.threshold}</span>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-gray-500">{r.notify_type}: {r.notify_target.slice(0, 30)}</span>
-                    <button onClick={async () => {
+                    <button onClick={async (e) => {
+                      e.stopPropagation();
                       await fetch(`/api/alert-rules?id=${r.id}`, { method: "DELETE" });
                       setAlertRules((prev: any[]) => prev.filter((x: any) => x.id !== r.id));
+                      if (editingRule?.id === r.id) setEditingRule(null);
                     }} className="text-xs text-red-400 hover:text-red-300">✕</button>
                   </div>
                 </div>
