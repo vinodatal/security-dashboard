@@ -54,7 +54,7 @@ async function pollTenant(tenant: any): Promise<void> {
       if (r.status === "fulfilled") {
         const val = r.value;
         const hasError = val?.error || val?.isError;
-        toolResults.push(`  ${hasError ? "✗" : "✓"} ${name}${hasError ? " (API error)" : ""}`);
+        toolResults.push(`  ${hasError ? "✗" : "✓"} ${name}${hasError ? ` (${typeof val?.error === 'string' ? val.error.slice(0, 100) : 'API error'})` : ""}`);
       } else {
         toolResults.push(`  ✗ ${name} — ${(r as PromiseRejectedResult).reason?.message?.slice(0, 80) ?? "failed"}`);
       }
