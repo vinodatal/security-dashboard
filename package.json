@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "scheduler": "tsx src/scheduler/index.ts"
+    "scheduler": "npx tsx src/scheduler/index.ts"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
