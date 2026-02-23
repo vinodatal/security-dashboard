@@ -30,13 +30,20 @@ export function getDb(): Database.Database {
       noncompliant_device_count INTEGER,
       purview_alert_count INTEGER,
       insider_risk_alert_count INTEGER,
-      sensitivity_label_count INTEGER
+      sensitivity_label_count INTEGER,
+      admin_risk_count INTEGER,
+      admin_no_mfa_count INTEGER
     );
 
     CREATE INDEX IF NOT EXISTS idx_snapshots_tenant_time
       ON snapshots (tenant_id, captured_at);
+  `);
 
-    CREATE TABLE IF NOT EXISTS snapshot_details (
+  // Add columns if upgrading from older schema
+  try { db.exec("ALTER TABLE snapshots ADD COLUMN admin_risk_count INTEGER"); } catch {}
+  try { db.exec("ALTER TABLE snapshots ADD COLUMN admin_no_mfa_count INTEGER"); } catch {}
+
+  db.exec(`    CREATE TABLE IF NOT EXISTS snapshot_details (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       snapshot_id INTEGER NOT NULL REFERENCES snapshots(id) ON DELETE CASCADE,
       panel TEXT NOT NULL,
@@ -105,14 +112,16 @@ export function saveSnapshot(
   const insider = dashboardData.insiderRiskAlerts;
   const insiderList = Array.isArray(insider) ? insider : insider?.value ?? insider?.alerts ?? [];
   const posture = dashboardData.dataPosture;
+  const adminRisks = dashboardData.adminRisks;
 
   const stmt = db.prepare(`
     INSERT INTO snapshots (
       tenant_id, secure_score_current, secure_score_max, secure_score_pct,
       defender_alert_count, defender_alert_high, risky_user_count,
       signin_count, noncompliant_device_count, purview_alert_count,
-      insider_risk_alert_count, sensitivity_label_count
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      insider_risk_alert_count, sensitivity_label_count,
+      admin_risk_count, admin_no_mfa_count
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   const result = stmt.run(
@@ -127,7 +136,9 @@ export function saveSnapshot(
     deviceList.length,
     purviewList.length,
     insiderList.length,
-    posture?.sensitivityLabels?.count ?? null
+    posture?.sensitivityLabels?.count ?? null,
+    adminRisks?.summary?.totalFindings ?? null,
+    adminRisks?.summary?.adminsWithoutMfa ?? null
   );
 
   const snapshotId = result.lastInsertRowid as number;
@@ -137,7 +148,7 @@ export function saveSnapshot(
     "INSERT INTO snapshot_details (snapshot_id, panel, data) VALUES (?, ?, ?)"
   );
   const panels = ["secureScore", "alerts", "riskyUsers", "signInLogs",
-    "intuneDevices", "purviewAlerts", "insiderRiskAlerts", "dataPosture", "recommendations"];
+    "intuneDevices", "purviewAlerts", "insiderRiskAlerts", "dataPosture", "recommendations", "adminRisks"];
   for (const panel of panels) {
     if (dashboardData[panel] !== undefined) {
       detailStmt.run(snapshotId, panel, JSON.stringify(dashboardData[panel]));

@@ -12,6 +12,8 @@ function extractMetric(snapshot: any, metric: string): number | null {
     noncompliant_devices: "noncompliant_device_count",
     purview_alerts: "purview_alert_count",
     insider_risk_alerts: "insider_risk_alert_count",
+    admin_risks: "admin_risk_count",
+    admin_no_mfa: "admin_no_mfa_count",
   };
   const col = map[metric];
   if (!col) return null;
