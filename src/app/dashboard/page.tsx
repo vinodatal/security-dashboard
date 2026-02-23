@@ -83,6 +83,8 @@ function DashboardContent() {
   const [alertHistory, setAlertHistory] = useState<any[]>([]);
   const [compliance, setCompliance] = useState<any>(null);
   const [editingRule, setEditingRule] = useState<any>(null);
+  const [investigating, setInvestigating] = useState<string | null>(null);
+  const [investigation, setInvestigation] = useState<any>(null);
 
   const tenantId = searchParams.get("tenantId") ?? "";
   const subscriptionId = searchParams.get("subscriptionId") ?? "";
@@ -121,6 +123,25 @@ function DashboardContent() {
       .then(setCompliance)
       .catch(() => {});
   }, [tenantId, subscriptionId, router]);
+
+  const handleInvestigate = async (finding: { type: string; user?: string; detail: string; severity: string }) => {
+    const key = `${finding.type}-${finding.user}-${finding.detail}`;
+    setInvestigating(key);
+    setInvestigation(null);
+    try {
+      const res = await fetch("/api/investigate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ finding }),
+      });
+      const data = await res.json();
+      setInvestigation(data);
+    } catch (e: any) {
+      setInvestigation({ error: e.message });
+    } finally {
+      setInvestigating(null);
+    }
+  };
 
   const handleScan = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -382,7 +403,16 @@ function DashboardContent() {
                       <div key={i} className="bg-gray-800 rounded px-3 py-2">
                         <div className="flex items-center justify-between">
                           <span className="text-sm text-gray-300 truncate mr-2">{f.user}</span>
-                          <SeverityBadge severity={f.severity} />
+                          <div className="flex items-center gap-2">
+                            <button
+                              onClick={() => handleInvestigate({ type: f.risk, user: f.user, detail: f.detail, severity: f.severity })}
+                              disabled={investigating !== null}
+                              className="text-xs text-blue-400 hover:text-blue-300 disabled:text-gray-600"
+                            >
+                              {investigating === `${f.risk}-${f.user}-${f.detail}` ? "🔍..." : "🔍"}
+                            </button>
+                            <SeverityBadge severity={f.severity} />
+                          </div>
                         </div>
                         <p className="text-xs text-gray-500 mt-0.5">{f.detail}</p>
                       </div>
@@ -439,6 +469,43 @@ function DashboardContent() {
             )}
           </Card>
         </div>
+
+        {/* Investigation Results */}
+        {(investigation || investigating) && (
+          <div className="bg-gray-900 rounded-xl border border-blue-800 p-5 mb-4">
+            <h2 className="text-lg font-semibold text-white mb-4">🔍 Investigation</h2>
+            {investigating ? (
+              <div className="flex items-center gap-3">
+                <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full"></div>
+                <p className="text-gray-400 text-sm">Investigating — calling MCP tools and analyzing with AI...</p>
+              </div>
+            ) : investigation?.error ? (
+              <p className="text-red-400 text-sm">⚠ {investigation.error}</p>
+            ) : (
+              <div>
+                {investigation.toolCalls?.length > 0 && (
+                  <div className="mb-4">
+                    <p className="text-xs font-medium text-gray-500 mb-2">Tools called:</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {investigation.toolCalls.map((tc: any, i: number) => (
+                        <span key={i} className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded">{tc.tool}</span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="prose prose-invert prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1 [&_p]:my-1.5 [&_h3]:text-white [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-3 [&_strong]:text-white">
+                  <div dangerouslySetInnerHTML={{ __html: investigation.narrative?.replace(/\n/g, "<br>") ?? "" }} />
+                </div>
+                <button
+                  onClick={() => setInvestigation(null)}
+                  className="mt-3 text-xs text-gray-500 hover:text-gray-300"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Improvement Actions — full width */}
         {!loading && score && !score.error && score?.topActions?.length > 0 && (
