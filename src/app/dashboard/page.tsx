@@ -1,8 +1,9 @@
 "use client";
 
 import { useSearchParams, useRouter } from "next/navigation";
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useState, Suspense, useRef } from "react";
 import { Sparkline } from "./sparkline";
+import { InvestigationPane } from "./investigation-pane";
 
 function Card({ title, icon, children, loading }: { title: string; icon: string; children: React.ReactNode; loading: boolean }) {
   return (
@@ -85,6 +86,8 @@ function DashboardContent() {
   const [editingRule, setEditingRule] = useState<any>(null);
   const [investigating, setInvestigating] = useState<string | null>(null);
   const [investigation, setInvestigation] = useState<any>(null);
+  const [showInvestPane, setShowInvestPane] = useState(false);
+  const investigatePaneRef = useRef<any>(null);
 
   const tenantId = searchParams.get("tenantId") ?? "";
   const subscriptionId = searchParams.get("subscriptionId") ?? "";
@@ -125,22 +128,11 @@ function DashboardContent() {
   }, [tenantId, subscriptionId, router]);
 
   const handleInvestigate = async (finding: { type: string; user?: string; detail: string; severity: string }) => {
-    const key = `${finding.type}-${finding.user}-${finding.detail}`;
-    setInvestigating(key);
-    setInvestigation(null);
-    try {
-      const res = await fetch("/api/investigate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ finding }),
-      });
-      const data = await res.json();
-      setInvestigation(data);
-    } catch (e: any) {
-      setInvestigation({ error: e.message });
-    } finally {
-      setInvestigating(null);
-    }
+    setShowInvestPane(true);
+    // Wait a tick for the pane to mount, then call its investigate
+    setTimeout(() => {
+      (InvestigationPane as any)._investigate?.(finding);
+    }, 100);
   };
 
   const handleScan = async (e: React.FormEvent) => {
@@ -186,10 +178,23 @@ function DashboardContent() {
 
   return (
     <div className="min-h-screen bg-gray-950 p-6">
-      <div className="max-w-7xl mx-auto">
+      {/* Investigation Pane */}
+      {showInvestPane && (
+        <InvestigationPane onClose={() => setShowInvestPane(false)} />
+      )}
+
+      <div className={`max-w-7xl mx-auto transition-all ${showInvestPane ? "ml-[500px]" : ""}`}>
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
-          <h1 className="text-2xl font-bold text-white">🛡️ Security Dashboard</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-2xl font-bold text-white">🛡️ Security Dashboard</h1>
+            <button
+              onClick={() => setShowInvestPane(!showInvestPane)}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium ${showInvestPane ? "bg-blue-600 text-white" : "bg-gray-800 hover:bg-gray-700 text-gray-300"}`}
+            >
+              🔍 Investigate
+            </button>
+          </div>
           <div className="flex items-center gap-3">
             <select
               value={hoursBack}
@@ -469,43 +474,6 @@ function DashboardContent() {
             )}
           </Card>
         </div>
-
-        {/* Investigation Results */}
-        {(investigation || investigating) && (
-          <div className="bg-gray-900 rounded-xl border border-blue-800 p-5 mb-4">
-            <h2 className="text-lg font-semibold text-white mb-4">🔍 Investigation</h2>
-            {investigating ? (
-              <div className="flex items-center gap-3">
-                <div className="animate-spin h-5 w-5 border-2 border-blue-500 border-t-transparent rounded-full"></div>
-                <p className="text-gray-400 text-sm">Investigating — calling MCP tools and analyzing with AI...</p>
-              </div>
-            ) : investigation?.error ? (
-              <p className="text-red-400 text-sm">⚠ {investigation.error}</p>
-            ) : (
-              <div>
-                {investigation.toolCalls?.length > 0 && (
-                  <div className="mb-4">
-                    <p className="text-xs font-medium text-gray-500 mb-2">Tools called:</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {investigation.toolCalls.map((tc: any, i: number) => (
-                        <span key={i} className="text-xs bg-gray-800 text-gray-400 px-2 py-0.5 rounded">{tc.tool}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-                <div className="prose prose-invert prose-sm max-w-none [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1 [&_p]:my-1.5 [&_h3]:text-white [&_h3]:text-sm [&_h3]:font-semibold [&_h3]:mt-3 [&_strong]:text-white">
-                  <div dangerouslySetInnerHTML={{ __html: investigation.narrative?.replace(/\n/g, "<br>") ?? "" }} />
-                </div>
-                <button
-                  onClick={() => setInvestigation(null)}
-                  className="mt-3 text-xs text-gray-500 hover:text-gray-300"
-                >
-                  Dismiss
-                </button>
-              </div>
-            )}
-          </div>
-        )}
 
         {/* Improvement Actions — full width */}
         {!loading && score && !score.error && score?.topActions?.length > 0 && (
