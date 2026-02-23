@@ -13,7 +13,9 @@ export function getSession(req: NextRequest): SessionData | null {
   const cookie = req.cookies.get(COOKIE_NAME);
   if (!cookie?.value) return null;
   try {
-    return JSON.parse(decrypt(cookie.value));
+    // Cookie value may be URL-encoded by the browser/Next.js
+    const decoded = decodeURIComponent(cookie.value);
+    return JSON.parse(decrypt(decoded));
   } catch {
     return null;
   }

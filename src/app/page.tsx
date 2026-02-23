@@ -160,7 +160,7 @@ export default function Home() {
 
   const handleViewDashboard = async () => {
     // Store token in httpOnly cookie — never in URL
-    await fetch("/api/session", {
+    const res = await fetch("/api/session", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -169,6 +169,17 @@ export default function Home() {
         subscriptionId: selectedSub,
       }),
     });
+    if (!res.ok) {
+      setError("Failed to create session");
+      return;
+    }
+    // Verify session was set
+    const check = await fetch("/api/session");
+    const checkData = await check.json();
+    if (!checkData.authenticated) {
+      setError("Session cookie not set — check browser cookie settings");
+      return;
+    }
     router.push(`/dashboard?tenantId=${encodeURIComponent(selectedTenant)}&subscriptionId=${encodeURIComponent(selectedSub)}`);
   };
 
