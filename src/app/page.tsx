@@ -38,6 +38,9 @@ export default function Home() {
   const [selectedApp, setSelectedApp] = useState<string>("");
   const [appSecret, setAppSecret] = useState("");
   const [creatingApp, setCreatingApp] = useState(false);
+  const [hasStoredCreds, setHasStoredCreds] = useState(false);
+  const [showAdminSetup, setShowAdminSetup] = useState(false);
+  const [adminSecret, setAdminSecret] = useState("");
 
   // Step 1: Sign in — get user + tenant list
   const handleSignIn = async () => {
@@ -95,6 +98,12 @@ export default function Home() {
       setApps(appData.apps ?? []);
       if (appData.apps?.length > 0) setSelectedApp(appData.apps[0].clientId);
 
+      // Check if credentials are already stored server-side
+      const adminRes = await fetch("/api/admin");
+      const adminData = await adminRes.json();
+      const stored = (adminData.tenants ?? []).find((t: any) => t.tenantId === selectedTenant);
+      setHasStoredCreds(!!stored);
+
       setStep("ready");
     } catch (e: any) {
       setError(e.message || "Failed to load tenant");
@@ -128,14 +137,34 @@ export default function Home() {
     }
   };
 
+  const handleSaveCredentials = async () => {
+    if (!selectedApp || !adminSecret) {
+      setError("Select an app and enter the client secret");
+      return;
+    }
+    try {
+      const res = await fetch("/api/admin", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tenantId: selectedTenant, clientId: selectedApp, clientSecret: adminSecret }),
+      });
+      const data = await res.json();
+      if (data.error) { setError(data.error); return; }
+      setHasStoredCreds(true);
+      setAdminSecret("");
+      setShowAdminSetup(false);
+    } catch (e: any) {
+      setError(e.message);
+    }
+  };
+
   const handleViewDashboard = () => {
     const params = new URLSearchParams({
       tenantId: selectedTenant,
       subscriptionId: selectedSub,
       userToken: graphToken,
     });
-    if (selectedApp) params.set("clientId", selectedApp);
-    if (appSecret) params.set("clientSecret", appSecret);
+    // No secrets in URL — they're stored server-side encrypted
     router.push(`/dashboard?${params.toString()}`);
   };
 
@@ -287,18 +316,43 @@ export default function Home() {
                     >
                       {creatingApp ? "Updating permissions..." : "Update permissions & grant consent"}
                     </button>
-                    <div className="mt-2">
-                      <input
-                        type="password"
-                        value={appSecret}
-                        onChange={(e) => setAppSecret(e.target.value)}
-                        placeholder="Client secret (for Secure Score, Defender, Hunting)"
-                        className="w-full px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-white text-xs placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-                      />
-                      <p className="text-xs text-gray-500 mt-1">
-                        From Azure Portal → App registrations → Certificates &amp; secrets
-                      </p>
-                    </div>
+
+                    {/* Credential status */}
+                    {hasStoredCreds ? (
+                      <div className="mt-2 bg-green-950 border border-green-800 rounded-lg px-3 py-2">
+                        <p className="text-xs text-green-300">✓ App credentials stored securely (encrypted)</p>
+                      </div>
+                    ) : (
+                      <div className="mt-2">
+                        <button
+                          onClick={() => setShowAdminSetup(!showAdminSetup)}
+                          className="text-xs text-yellow-400 hover:text-yellow-300"
+                        >
+                          {showAdminSetup ? "Hide admin setup" : "⚠ Set up app credentials (admin one-time)"}
+                        </button>
+                        {showAdminSetup && (
+                          <div className="mt-2 space-y-2 border border-gray-700 rounded-lg p-3 bg-gray-800/50">
+                            <p className="text-xs text-gray-400">
+                              Enter the client secret once. It will be encrypted and stored server-side.
+                              Regular users won&apos;t need to enter it again.
+                            </p>
+                            <input
+                              type="password"
+                              value={adminSecret}
+                              onChange={(e) => setAdminSecret(e.target.value)}
+                              placeholder="Client secret from Azure Portal"
+                              className="w-full px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-white text-xs placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                            />
+                            <button
+                              onClick={handleSaveCredentials}
+                              className="w-full py-1.5 bg-green-700 hover:bg-green-600 text-white text-xs font-medium rounded-lg"
+                            >
+                              Save Credentials (Encrypted)
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </>
                 ) : (
                   <div className="bg-yellow-950 border border-yellow-800 rounded-lg px-4 py-3">

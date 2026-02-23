@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { callTool } from "@/lib/mcp-client";
-import { saveSnapshot } from "@/lib/db";
+import { saveSnapshot, getTenantCredentials } from "@/lib/db";
+import { decrypt } from "@/lib/crypto";
 
 export async function POST(req: NextRequest) {
-  const { tenantId, subscriptionId, userToken, clientId, clientSecret, hoursBack = 24 } = await req.json();
+  const { tenantId, subscriptionId, userToken, hoursBack = 24 } = await req.json();
 
   if (!tenantId || !userToken) {
     return NextResponse.json(
@@ -15,11 +16,20 @@ export async function POST(req: NextRequest) {
   const toolArgs = { tenantId, userToken };
   const lookbackDays = Math.max(1, Math.ceil(hoursBack / 24));
 
-  const mcpEnv = clientId && clientSecret
-    ? { AZURE_CLIENT_ID: clientId, AZURE_CLIENT_SECRET: clientSecret, AZURE_TENANT_ID: tenantId }
-    : undefined;
+  // Load app credentials from server-side encrypted storage
+  let mcpEnv: Record<string, string> | undefined;
+  let appArgs = toolArgs;
 
-  const appArgs = clientId && clientSecret ? { tenantId } : toolArgs;
+  const creds = getTenantCredentials(tenantId);
+  if (creds) {
+    try {
+      const clientSecret = decrypt(creds.clientSecretEnc);
+      mcpEnv = { AZURE_CLIENT_ID: creds.clientId, AZURE_CLIENT_SECRET: clientSecret, AZURE_TENANT_ID: tenantId };
+      appArgs = { tenantId } as any;
+    } catch (e) {
+      console.error("Failed to decrypt tenant credentials:", e);
+    }
+  }
 
   const results = await Promise.allSettled([
     callTool("get_defender_alerts", { ...appArgs, top: 20 }, mcpEnv),

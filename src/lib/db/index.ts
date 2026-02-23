@@ -251,3 +251,49 @@ export function getAlertHistory(tenantId: string, limit = 50): any[] {
     ORDER BY ah.triggered_at DESC LIMIT ?
   `).all(tenantId, limit);
 }
+
+// --- Tenant Credentials (encrypted) ---
+
+export function saveTenantCredentials(tenantId: string, clientId: string, encryptedSecret: string) {
+  const db = getDb();
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tenant_credentials (
+      tenant_id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      client_secret_enc TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  db.prepare(`
+    INSERT OR REPLACE INTO tenant_credentials (tenant_id, client_id, client_secret_enc)
+    VALUES (?, ?, ?)
+  `).run(tenantId, clientId, encryptedSecret);
+}
+
+export function getTenantCredentials(tenantId: string): { clientId: string; clientSecretEnc: string } | null {
+  const db = getDb();
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tenant_credentials (
+      tenant_id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      client_secret_enc TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  const row = db.prepare("SELECT client_id, client_secret_enc FROM tenant_credentials WHERE tenant_id = ?").get(tenantId) as any;
+  if (!row) return null;
+  return { clientId: row.client_id, clientSecretEnc: row.client_secret_enc };
+}
+
+export function listTenantCredentials(): Array<{ tenantId: string; clientId: string; updatedAt: string }> {
+  const db = getDb();
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tenant_credentials (
+      tenant_id TEXT PRIMARY KEY,
+      client_id TEXT NOT NULL,
+      client_secret_enc TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    )
+  `);
+  return db.prepare("SELECT tenant_id, client_id, updated_at FROM tenant_credentials").all() as any[];
+}

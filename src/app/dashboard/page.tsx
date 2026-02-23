@@ -86,8 +86,6 @@ function DashboardContent() {
   const tenantId = searchParams.get("tenantId") ?? "";
   const subscriptionId = searchParams.get("subscriptionId") ?? "";
   const userToken = searchParams.get("userToken") ?? "";
-  const clientId = searchParams.get("clientId") ?? "";
-  const clientSecret = searchParams.get("clientSecret") ?? "";
 
   const fetchData = (hours: number) => {
     setLoading(true);
@@ -95,7 +93,7 @@ function DashboardContent() {
     fetch("/api/dashboard", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tenantId, subscriptionId, userToken, clientId, clientSecret, hoursBack: hours }),
+      body: JSON.stringify({ tenantId, subscriptionId, userToken, hoursBack: hours }),
     })
       .then((r) => r.json())
       .then(setData)
@@ -476,8 +474,6 @@ function DashboardContent() {
                 threshold: Number(fd.get("threshold")),
                 notifyType: fd.get("notifyType"),
                 notifyTarget: fd.get("notifyTarget"),
-                clientId,
-                clientSecret,
                 userToken,
               }),
             });
