@@ -158,14 +158,18 @@ export default function Home() {
     }
   };
 
-  const handleViewDashboard = () => {
-    const params = new URLSearchParams({
-      tenantId: selectedTenant,
-      subscriptionId: selectedSub,
-      userToken: graphToken,
+  const handleViewDashboard = async () => {
+    // Store token in httpOnly cookie — never in URL
+    await fetch("/api/session", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        graphToken,
+        tenantId: selectedTenant,
+        subscriptionId: selectedSub,
+      }),
     });
-    // No secrets in URL — they're stored server-side encrypted
-    router.push(`/dashboard?${params.toString()}`);
+    router.push(`/dashboard?tenantId=${encodeURIComponent(selectedTenant)}&subscriptionId=${encodeURIComponent(selectedSub)}`);
   };
 
   const tenantName = tenants.find((t) => t.tenantId === selectedTenant)?.displayName || "";

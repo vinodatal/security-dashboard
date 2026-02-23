@@ -2,17 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { callTool } from "@/lib/mcp-client";
 import { saveSnapshot, getTenantCredentials } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
+import { getSessionFromRequest } from "@/app/api/session/route";
 
 export async function POST(req: NextRequest) {
-  const { tenantId, subscriptionId, userToken, hoursBack = 24 } = await req.json();
+  const body = await req.json();
+  const hoursBack = body.hoursBack ?? 24;
 
-  if (!tenantId || !userToken) {
-    return NextResponse.json(
-      { error: "tenantId and userToken are required" },
-      { status: 400 }
-    );
+  // Read token from httpOnly cookie session
+  const session = getSessionFromRequest(req);
+  if (!session) {
+    return NextResponse.json({ error: "Not authenticated. Please sign in." }, { status: 401 });
   }
 
+  const { graphToken: userToken, tenantId } = session;
   const toolArgs = { tenantId, userToken };
   const lookbackDays = Math.max(1, Math.ceil(hoursBack / 24));
 

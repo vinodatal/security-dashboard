@@ -85,7 +85,6 @@ function DashboardContent() {
 
   const tenantId = searchParams.get("tenantId") ?? "";
   const subscriptionId = searchParams.get("subscriptionId") ?? "";
-  const userToken = searchParams.get("userToken") ?? "";
 
   const fetchData = (hours: number) => {
     setLoading(true);
@@ -93,16 +92,19 @@ function DashboardContent() {
     fetch("/api/dashboard", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ tenantId, subscriptionId, userToken, hoursBack: hours }),
+      body: JSON.stringify({ hoursBack: hours }),
     })
-      .then((r) => r.json())
+      .then((r) => {
+        if (r.status === 401) { router.push("/"); throw new Error("Session expired"); }
+        return r.json();
+      })
       .then(setData)
       .catch((e) => setError(e.message))
       .finally(() => setLoading(false));
   };
 
   useEffect(() => {
-    if (!tenantId || !userToken) { router.push("/"); return; }
+    if (!tenantId) { router.push("/"); return; }
     fetchData(hoursBack);
     // Fetch trends
     fetch(`/api/trends?tenantId=${encodeURIComponent(tenantId)}&days=30`)
@@ -117,7 +119,7 @@ function DashboardContent() {
       .then((r) => r.json())
       .then(setCompliance)
       .catch(() => {});
-  }, [tenantId, subscriptionId, userToken, router]);
+  }, [tenantId, subscriptionId, router]);
 
   const handleScan = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -179,7 +181,7 @@ function DashboardContent() {
               <option value={720}>Last 30 days</option>
             </select>
             <span className="text-xs text-gray-500 font-mono">{tenantId.slice(0, 8)}...</span>
-            <button onClick={() => router.push("/")} className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm rounded-lg">
+            <button onClick={async () => { await fetch("/api/session", { method: "DELETE" }); router.push("/"); }} className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm rounded-lg">
               Disconnect
             </button>
           </div>
@@ -474,7 +476,6 @@ function DashboardContent() {
                 threshold: Number(fd.get("threshold")),
                 notifyType: fd.get("notifyType"),
                 notifyTarget: fd.get("notifyTarget"),
-                userToken,
               }),
             });
             form.reset();
