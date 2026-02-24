@@ -629,11 +629,62 @@ function DashboardContent() {
           )}
           {alertHistory.length > 0 && (
             <div className="space-y-2">
-              <p className="text-xs font-medium text-gray-400">Recent alerts:</p>
+              <p className="text-xs font-medium text-gray-400">Alert history:</p>
               {alertHistory.map((h: any, i: number) => (
-                <div key={i} className="flex items-center justify-between bg-gray-800 rounded-lg px-3 py-2">
-                  <span className="text-sm text-gray-300">{h.message}</span>
-                  <span className="text-xs text-gray-500">{new Date(h.triggered_at).toLocaleString()}</span>
+                <div key={i} className={`bg-gray-800 rounded-lg px-3 py-2 ${h.status === "mitigated" ? "opacity-60" : ""}`}>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${h.status === "active" ? "bg-red-900 text-red-300" : "bg-green-900 text-green-300"}`}>
+                        {h.status}
+                      </span>
+                      <span className="text-sm text-gray-300 truncate">{h.message}</span>
+                      {h.detection_count > 1 && (
+                        <span className="text-xs bg-yellow-900 text-yellow-300 px-1.5 py-0.5 rounded">{h.detection_count}x</span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0 ml-2">
+                      <span className="text-xs text-gray-500">{new Date(h.last_seen_at ?? h.triggered_at).toLocaleString()}</span>
+                      {h.status === "active" ? (
+                        <button
+                          onClick={async () => {
+                            const res = await fetch("/api/mitigate", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ alertId: h.id }),
+                            });
+                            const data = await res.json();
+                            alert(data.verified ? `✅ ${data.message}\n\n${data.analysis?.slice(0, 300)}` : `⚠️ ${data.message}\n\n${data.analysis?.slice(0, 300) ?? ""}`);
+                            // Refresh
+                            const r = await fetch(`/api/alert-rules?tenantId=${encodeURIComponent(tenantId)}`);
+                            const d = await r.json();
+                            setAlertHistory(d.history ?? []);
+                          }}
+                          className="text-xs text-green-400 hover:text-green-300 whitespace-nowrap"
+                        >
+                          ✓ Mitigate
+                        </button>
+                      ) : (
+                        <button
+                          onClick={async () => {
+                            await fetch("/api/mitigate", {
+                              method: "POST",
+                              headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ alertId: h.id, action: "reopen" }),
+                            });
+                            const r = await fetch(`/api/alert-rules?tenantId=${encodeURIComponent(tenantId)}`);
+                            const d = await r.json();
+                            setAlertHistory(d.history ?? []);
+                          }}
+                          className="text-xs text-yellow-400 hover:text-yellow-300 whitespace-nowrap"
+                        >
+                          ↩ Reopen
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  {h.mitigation_note && (
+                    <p className="text-xs text-gray-500 mt-1 truncate">Note: {h.mitigation_note}</p>
+                  )}
                 </div>
               ))}
             </div>

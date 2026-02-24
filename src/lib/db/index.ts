@@ -81,13 +81,25 @@ export function getDb(): Database.Database {
       rule_id INTEGER NOT NULL REFERENCES alert_rules(id) ON DELETE CASCADE,
       tenant_id TEXT NOT NULL,
       triggered_at TEXT NOT NULL DEFAULT (datetime('now')),
+      last_seen_at TEXT NOT NULL DEFAULT (datetime('now')),
       metric TEXT NOT NULL,
       value REAL NOT NULL,
       threshold REAL NOT NULL,
       message TEXT NOT NULL,
-      notified INTEGER NOT NULL DEFAULT 0
+      notified INTEGER NOT NULL DEFAULT 0,
+      detection_count INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'active',
+      mitigated_at TEXT,
+      mitigation_note TEXT
     );
   `);
+
+  // Migrations for existing DBs
+  try { db.exec("ALTER TABLE alert_history ADD COLUMN detection_count INTEGER NOT NULL DEFAULT 1"); } catch {}
+  try { db.exec("ALTER TABLE alert_history ADD COLUMN status TEXT NOT NULL DEFAULT 'active'"); } catch {}
+  try { db.exec("ALTER TABLE alert_history ADD COLUMN mitigated_at TEXT"); } catch {}
+  try { db.exec("ALTER TABLE alert_history ADD COLUMN mitigation_note TEXT"); } catch {}
+  try { db.exec("ALTER TABLE alert_history ADD COLUMN last_seen_at TEXT NOT NULL DEFAULT (datetime('now'))"); } catch {}
 
   return db;
 }
@@ -237,6 +249,19 @@ export function deleteAlertRule(id: number) {
 
 // --- Alert History ---
 
+// Returns existing active alert for this rule, or null
+export function getActiveAlert(ruleId: number): any {
+  return getDb().prepare(
+    "SELECT * FROM alert_history WHERE rule_id = ? AND status = 'active' ORDER BY triggered_at DESC LIMIT 1"
+  ).get(ruleId);
+}
+
+export function incrementAlertCount(alertId: number, newValue: number) {
+  getDb().prepare(
+    "UPDATE alert_history SET detection_count = detection_count + 1, last_seen_at = datetime('now'), value = ? WHERE id = ?"
+  ).run(newValue, alertId);
+}
+
 export function saveAlertEvent(event: {
   ruleId: number;
   tenantId: string;
@@ -244,22 +269,44 @@ export function saveAlertEvent(event: {
   value: number;
   threshold: number;
   message: string;
-}) {
+}): { isNew: boolean; alertId: number } {
   const db = getDb();
-  db.prepare(`
-    INSERT INTO alert_history (rule_id, tenant_id, metric, value, threshold, message)
-    VALUES (?, ?, ?, ?, ?, ?)
+
+  // Check for existing active alert for this rule
+  const existing = getActiveAlert(event.ruleId);
+  if (existing) {
+    incrementAlertCount(existing.id, event.value);
+    return { isNew: false, alertId: existing.id };
+  }
+
+  // New alert
+  const result = db.prepare(`
+    INSERT INTO alert_history (rule_id, tenant_id, metric, value, threshold, message, status)
+    VALUES (?, ?, ?, ?, ?, ?, 'active')
   `).run(event.ruleId, event.tenantId, event.metric, event.value, event.threshold, event.message);
   db.prepare("UPDATE alert_rules SET last_triggered_at = datetime('now') WHERE id = ?").run(event.ruleId);
+  return { isNew: true, alertId: result.lastInsertRowid as number };
+}
+
+export function mitigateAlert(alertId: number, note?: string) {
+  getDb().prepare(
+    "UPDATE alert_history SET status = 'mitigated', mitigated_at = datetime('now'), mitigation_note = ? WHERE id = ?"
+  ).run(note ?? null, alertId);
+}
+
+export function reopenAlert(alertId: number) {
+  getDb().prepare(
+    "UPDATE alert_history SET status = 'active', mitigated_at = NULL, mitigation_note = NULL WHERE id = ?"
+  ).run(alertId);
 }
 
 export function getAlertHistory(tenantId: string, limit = 50): any[] {
   return getDb().prepare(`
-    SELECT ah.*, ar.name as rule_name, ar.notify_type
+    SELECT ah.*, ar.name as rule_name, ar.notify_type, ar.notify_target
     FROM alert_history ah
     JOIN alert_rules ar ON ah.rule_id = ar.id
     WHERE ah.tenant_id = ?
-    ORDER BY ah.triggered_at DESC LIMIT ?
+    ORDER BY ah.status = 'active' DESC, ah.last_seen_at DESC LIMIT ?
   `).all(tenantId, limit);
 }
 

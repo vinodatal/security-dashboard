@@ -1,4 +1,4 @@
-import { getAlertRules, saveAlertEvent } from "../db/index.js";
+import { getAlertRules, saveAlertEvent, getDb } from "../db/index.js";
 
 // Maps metric names to snapshot column values
 function extractMetric(snapshot: any, metric: string): number | null {
@@ -52,6 +52,8 @@ export interface TriggeredAlert {
   message: string;
   notifyType: string;
   notifyTarget: string;
+  isNew: boolean;
+  detectionCount: number;
 }
 
 export function evaluateAlerts(tenantId: string, snapshot: any): TriggeredAlert[] {
@@ -66,7 +68,7 @@ export function evaluateAlerts(tenantId: string, snapshot: any): TriggeredAlert[
       const label = OPERATOR_LABELS[rule.operator] ?? rule.operator;
       const message = `🚨 ${rule.name}: ${rule.metric} ${label} ${rule.threshold} (current: ${value})`;
 
-      saveAlertEvent({
+      const { isNew, alertId } = saveAlertEvent({
         ruleId: rule.id,
         tenantId,
         metric: rule.metric,
@@ -75,6 +77,9 @@ export function evaluateAlerts(tenantId: string, snapshot: any): TriggeredAlert[
         message,
       });
 
+      // Get updated detection count
+      const alert = getDb().prepare("SELECT detection_count FROM alert_history WHERE id = ?").get(alertId) as any;
+
       triggered.push({
         ruleId: rule.id,
         ruleName: rule.name,
@@ -82,9 +87,11 @@ export function evaluateAlerts(tenantId: string, snapshot: any): TriggeredAlert[
         metric: rule.metric,
         value,
         threshold: rule.threshold,
-        message,
+        message: isNew ? message : `${message} [seen ${alert?.detection_count ?? 1}x]`,
         notifyType: rule.notify_type,
         notifyTarget: rule.notify_target,
+        isNew,
+        detectionCount: alert?.detection_count ?? 1,
       });
     }
   }

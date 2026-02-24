@@ -1,7 +1,11 @@
 import type { TriggeredAlert } from "./evaluator.js";
 
 export async function sendNotifications(alerts: TriggeredAlert[]): Promise<void> {
-  for (const alert of alerts) {
+  // Only notify on NEW alerts — deduped alerts just increment count
+  const newAlerts = alerts.filter((a) => a.isNew);
+  if (newAlerts.length === 0) return;
+
+  for (const alert of newAlerts) {
     try {
       switch (alert.notifyType) {
         case "webhook":
