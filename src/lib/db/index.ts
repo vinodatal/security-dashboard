@@ -306,7 +306,7 @@ export function getAlertHistory(tenantId: string, limit = 50): any[] {
     FROM alert_history ah
     JOIN alert_rules ar ON ah.rule_id = ar.id
     WHERE ah.tenant_id = ?
-    ORDER BY ah.status = 'active' DESC, ah.last_seen_at DESC LIMIT ?
+    ORDER BY CASE WHEN ah.status = 'active' THEN 0 ELSE 1 END, ah.triggered_at DESC LIMIT ?
   `).all(tenantId, limit);
 }
 
