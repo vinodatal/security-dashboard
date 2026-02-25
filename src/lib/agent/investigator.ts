@@ -116,9 +116,12 @@ Call the relevant tools to gather context, then provide your assessment and reme
       const toolResults = await Promise.all(
         message.tool_calls.map(async (tc: any) => {
           const args = JSON.parse(tc.function.arguments);
-          // Inject tenantId + userToken if not provided
+          // Inject tenantId if not provided
           if (!args.tenantId) args.tenantId = tenantId;
-          if (userToken && !args.userToken) args.userToken = userToken;
+          // Only pass userToken for tools that work with delegated permissions
+          // Don't pass it when app credentials are available — lets the MCP server
+          // use client credentials flow for tools that require app-only tokens
+          if (userToken && !args.userToken && !mcpEnv) args.userToken = userToken;
 
           try {
             const result = await callTool(tc.function.name, args, mcpEnv);
