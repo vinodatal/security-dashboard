@@ -12,8 +12,13 @@ function simplifyParams(schema: any): any {
   if (!schema?.properties) return { type: "object", properties: {} };
   const simplified: any = { type: "object", properties: {} };
   for (const [key, val] of Object.entries(schema.properties as Record<string, any>)) {
-    simplified.properties[key] = { type: val.type ?? "string" };
-    if (val.description) simplified.properties[key].description = val.description.slice(0, 60);
+    const prop: any = { type: val.type ?? "string" };
+    if (val.description) prop.description = val.description.slice(0, 60);
+    // Arrays must have items defined for OpenAI
+    if (val.type === "array") {
+      prop.items = val.items ?? { type: "string" };
+    }
+    simplified.properties[key] = prop;
   }
   if (schema.required) simplified.required = schema.required;
   return simplified;
