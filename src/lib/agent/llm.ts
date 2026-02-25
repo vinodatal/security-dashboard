@@ -3,7 +3,7 @@ import { promisify } from "util";
 
 const execAsync = promisify(exec);
 const ENDPOINT = "https://models.inference.ai.azure.com/chat/completions";
-const MODEL = "gpt-4o";
+const MODEL = "gpt-4o-mini";
 
 async function getGitHubToken(): Promise<string> {
   // Use gh CLI token
