@@ -101,3 +101,9 @@ export async function callTool(
     }
   }
 }
+
+export async function listMcpTools(env?: Record<string, string>): Promise<any[]> {
+  const client = await getClient(env);
+  const result = await client.listTools();
+  return result.tools;
+}
