@@ -15,19 +15,36 @@ function zodToJsonSchema(schema: any): any {
   return { type: "object", properties: {} };
 }
 
+// Tools to exclude from agent (setup/meta tools)
+const EXCLUDED_TOOLS = new Set(["setup_app_registration", "verify_access", "get_scan_summary", "get_findings"]);
+
+// Simplify parameter schema to reduce token count
+function simplifyParams(schema: any): any {
+  if (!schema?.properties) return { type: "object", properties: {} };
+  const simplified: any = { type: "object", properties: {} };
+  const required: string[] = [];
+  for (const [key, val] of Object.entries(schema.properties as Record<string, any>)) {
+    // Only keep type and description, drop defaults/enums/etc
+    simplified.properties[key] = { type: val.type ?? "string" };
+    if (val.description) simplified.properties[key].description = val.description.slice(0, 80);
+  }
+  if (schema.required) simplified.required = schema.required;
+  return simplified;
+}
+
 async function getAvailableTools(env?: Record<string, string>): Promise<AgentTool[]> {
   if (cachedTools && Date.now() - cacheTime < CACHE_TTL) return cachedTools;
 
   const mcpTools = await listMcpTools(env);
 
   cachedTools = mcpTools
-    .filter((t: any) => t.name !== "setup_app_registration") // Don't let agent create apps
+    .filter((t: any) => !EXCLUDED_TOOLS.has(t.name))
     .map((t: any) => ({
       type: "function" as const,
       function: {
         name: t.name,
-        description: (t.description ?? "").slice(0, 200),
-        parameters: zodToJsonSchema(t.inputSchema),
+        description: (t.description ?? "").slice(0, 100),
+        parameters: simplifyParams(t.inputSchema),
       },
     }));
 
@@ -126,7 +143,7 @@ Call the relevant tools to gather context, then provide your assessment and reme
           try {
             const result = await callTool(tc.function.name, args, mcpEnv);
             const resultStr = typeof result === "string" ? result : JSON.stringify(result, null, 2);
-            const truncated = resultStr.length > 3000 ? resultStr.slice(0, 3000) + "\n...(truncated)" : resultStr;
+            const truncated = resultStr.length > 1500 ? resultStr.slice(0, 1500) + "\n...(truncated)" : resultStr;
 
             toolCallLog.push({
               tool: tc.function.name,
