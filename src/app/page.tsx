@@ -186,21 +186,21 @@ export default function Home() {
   const tenantName = tenants.find((t) => t.tenantId === selectedTenant)?.displayName || "";
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-950 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-gray-950 p-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <h1 className="text-3xl font-bold text-white mb-2">🛡️ Security Dashboard</h1>
-          <p className="text-gray-400">View your Azure security posture</p>
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">🛡️ Security Dashboard</h1>
+          <p className="text-gray-500 dark:text-gray-400">View your Azure security posture</p>
         </div>
 
-        <div className="bg-gray-900 rounded-xl p-6 space-y-4 border border-gray-800">
+        <div className="bg-white dark:bg-gray-900 rounded-xl p-6 space-y-4 border border-gray-200 dark:border-gray-800">
 
           {/* Step 1: Sign in */}
           {step === "idle" && (
             <>
-              <p className="text-sm text-gray-400 text-center">
+              <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
                 Uses your Azure CLI session. Run{" "}
-                <code className="bg-gray-800 px-1.5 py-0.5 rounded text-blue-400">az login</code>{" "}
+                <code className="bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded text-blue-600 dark:text-blue-400">az login</code>{" "}
                 first if you haven&apos;t already.
               </p>
               <button
@@ -215,34 +215,34 @@ export default function Home() {
           {step === "signing-in" && (
             <div className="text-center py-8">
               <div className="animate-spin h-8 w-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-              <p className="text-gray-400">Reading Azure CLI session...</p>
+              <p className="text-gray-500 dark:text-gray-400">Reading Azure CLI session...</p>
             </div>
           )}
 
           {/* Step 2: Pick tenant */}
           {step === "pick-tenant" && (
             <>
-              <div className="flex items-center gap-3 bg-gray-800 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-3 bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2">
                 <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm font-bold">
                   {userName[0]?.toUpperCase() ?? "?"}
                 </div>
-                <p className="text-sm text-white">{userName}</p>
+                <p className="text-sm text-gray-900 dark:text-white">{userName}</p>
                 <button
                   onClick={() => { setStep("idle"); setTenants([]); }}
-                  className="ml-auto text-xs text-gray-500 hover:text-gray-300"
+                  className="ml-auto text-xs text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300"
                 >
                   Sign out
                 </button>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">
                   Select Tenant ({tenants.length} available)
                 </label>
                 <select
                   value={selectedTenant}
                   onChange={(e) => setSelectedTenant(e.target.value)}
-                  className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                 >
                   {tenants.map((t) => (
                     <option key={t.tenantId} value={t.tenantId}>
@@ -264,7 +264,7 @@ export default function Home() {
           {step === "loading-tenant" && (
             <div className="text-center py-8">
               <div className="animate-spin h-8 w-8 border-2 border-blue-500 border-t-transparent rounded-full mx-auto mb-4"></div>
-              <p className="text-gray-400">Loading {tenantName}...</p>
+              <p className="text-gray-500 dark:text-gray-400">Loading {tenantName}...</p>
             </div>
           )}
 
@@ -272,13 +272,13 @@ export default function Home() {
           {step === "ready" && (
             <>
               {/* User + tenant */}
-              <div className="flex items-center gap-3 bg-gray-800 rounded-lg px-3 py-2">
+              <div className="flex items-center gap-3 bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2">
                 <div className="w-8 h-8 bg-blue-600 rounded-full flex items-center justify-center text-white text-sm font-bold">
                   {userName[0]?.toUpperCase() ?? "?"}
                 </div>
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm text-white truncate">{userName}</p>
-                  <p className="text-xs text-gray-400 truncate">{tenantName}</p>
+                  <p className="text-sm text-gray-900 dark:text-white truncate">{userName}</p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{tenantName}</p>
                 </div>
                 <button
                   onClick={() => setStep("pick-tenant")}
@@ -291,11 +291,11 @@ export default function Home() {
               {/* Subscription */}
               {subscriptions.length > 0 && (
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Subscription</label>
+                  <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">Subscription</label>
                   <select
                     value={selectedSub}
                     onChange={(e) => setSelectedSub(e.target.value)}
-                    className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     {subscriptions.map((s) => (
                       <option key={s.subscriptionId} value={s.subscriptionId}>
@@ -308,7 +308,7 @@ export default function Home() {
 
               {/* App registration */}
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">
+                <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">
                   App Registration ({apps.length} found)
                 </label>
                 {apps.length > 0 ? (
@@ -316,7 +316,7 @@ export default function Home() {
                     <select
                       value={selectedApp}
                       onChange={(e) => setSelectedApp(e.target.value)}
-                      className="w-full px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      className="w-full px-3 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
                     >
                       {apps.map((a) => (
                         <option key={a.clientId} value={a.clientId}>
@@ -334,8 +334,8 @@ export default function Home() {
 
                     {/* Credential status */}
                     {hasStoredCreds ? (
-                      <div className="mt-2 bg-green-950 border border-green-800 rounded-lg px-3 py-2">
-                        <p className="text-xs text-green-300">✓ App credentials stored securely (encrypted)</p>
+                      <div className="mt-2 bg-green-50 dark:bg-green-950 border border-green-200 dark:border-green-800 rounded-lg px-3 py-2">
+                        <p className="text-xs text-green-700 dark:text-green-300">✓ App credentials stored securely (encrypted)</p>
                       </div>
                     ) : (
                       <div className="mt-2">
@@ -346,8 +346,8 @@ export default function Home() {
                           {showAdminSetup ? "Hide admin setup" : "⚠ Set up app credentials (admin one-time)"}
                         </button>
                         {showAdminSetup && (
-                          <div className="mt-2 space-y-2 border border-gray-700 rounded-lg p-3 bg-gray-800/50">
-                            <p className="text-xs text-gray-400">
+                          <div className="mt-2 space-y-2 border border-gray-300 dark:border-gray-700 rounded-lg p-3 bg-gray-50/50 dark:bg-gray-800/50">
+                            <p className="text-xs text-gray-500 dark:text-gray-400">
                               Enter the client secret once. It will be encrypted and stored server-side.
                               Regular users won&apos;t need to enter it again.
                             </p>
@@ -356,7 +356,7 @@ export default function Home() {
                               value={adminSecret}
                               onChange={(e) => setAdminSecret(e.target.value)}
                               placeholder="Client secret from Azure Portal"
-                              className="w-full px-3 py-1.5 bg-gray-800 border border-gray-700 rounded-lg text-white text-xs placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
+                              className="w-full px-3 py-1.5 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white text-xs placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
                             />
                             <button
                               onClick={handleSaveCredentials}
@@ -370,9 +370,9 @@ export default function Home() {
                     )}
                   </>
                 ) : (
-                  <div className="bg-yellow-950 border border-yellow-800 rounded-lg px-4 py-3">
-                    <p className="text-sm text-yellow-300 font-medium">No app registrations found</p>
-                    <p className="text-xs text-yellow-400/70 mt-1">
+                  <div className="bg-yellow-50 dark:bg-yellow-950 border border-yellow-200 dark:border-yellow-800 rounded-lg px-4 py-3">
+                    <p className="text-sm text-yellow-700 dark:text-yellow-300 font-medium">No app registrations found</p>
+                    <p className="text-xs text-yellow-600/70 dark:text-yellow-400/70 mt-1">
                       An app with security API permissions is needed for Defender, Hunting, and Threat Intel tools.
                     </p>
                     <button
@@ -396,9 +396,10 @@ export default function Home() {
             </>
           )}
 
-          {error && <p className="text-red-400 text-sm text-center">{error}</p>}
+          {error && <p className="text-red-500 dark:text-red-400 text-sm text-center">{error}</p>}
         </div>
       </div>
     </div>
   );
 }
+

@@ -4,16 +4,17 @@ import { useSearchParams, useRouter } from "next/navigation";
 import { useEffect, useState, Suspense, useRef } from "react";
 import { Sparkline } from "./sparkline";
 import { InvestigationPane } from "./investigation-pane";
+import { ThemeToggle } from "./theme-toggle";
 
 function Card({ title, icon, children, loading }: { title: string; icon: string; children: React.ReactNode; loading: boolean }) {
   return (
-    <div className="bg-gray-900 rounded-xl border border-gray-800 p-5">
-      <h2 className="text-lg font-semibold text-white mb-3">{icon} {title}</h2>
+    <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
+      <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-3">{icon} {title}</h2>
       {loading ? (
         <div className="animate-pulse space-y-2">
-          <div className="h-4 bg-gray-800 rounded w-3/4"></div>
-          <div className="h-4 bg-gray-800 rounded w-1/2"></div>
-          <div className="h-4 bg-gray-800 rounded w-2/3"></div>
+          <div className="h-4 bg-gray-200 dark:bg-gray-800 rounded w-3/4"></div>
+          <div className="h-4 bg-gray-200 dark:bg-gray-800 rounded w-1/2"></div>
+          <div className="h-4 bg-gray-200 dark:bg-gray-800 rounded w-2/3"></div>
         </div>
       ) : children}
     </div>
@@ -22,14 +23,14 @@ function Card({ title, icon, children, loading }: { title: string; icon: string;
 
 function SeverityBadge({ severity }: { severity: string }) {
   const colors: Record<string, string> = {
-    high: "bg-red-900 text-red-300",
-    critical: "bg-red-950 text-red-200",
-    medium: "bg-yellow-900 text-yellow-300",
-    low: "bg-blue-900 text-blue-300",
-    informational: "bg-gray-800 text-gray-300",
-    noncompliant: "bg-red-900 text-red-300",
-    compliant: "bg-green-900 text-green-300",
-    none: "bg-gray-800 text-gray-300",
+    high: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
+    critical: "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-200",
+    medium: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300",
+    low: "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300",
+    informational: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300",
+    noncompliant: "bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300",
+    compliant: "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300",
+    none: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300",
   };
   return (
     <span className={`px-2 py-0.5 rounded text-xs font-medium ${colors[severity?.toLowerCase()] ?? colors.informational}`}>
@@ -48,7 +49,7 @@ function ItemList({ items, renderItem, emptyText, maxItems = 5 }: {
   const errMsg = items?.error ?? items?.message;
   if (errMsg) {
     const text = typeof errMsg === "string" ? errMsg : JSON.stringify(errMsg);
-    return <p className="text-red-400 text-sm">⚠ {text}</p>;
+    return <p className="text-red-500 dark:text-red-400 text-sm">⚠ {text}</p>;
   }
   // Handle different response shapes from MCP tools
   const list = Array.isArray(items) ? items
@@ -56,14 +57,14 @@ function ItemList({ items, renderItem, emptyText, maxItems = 5 }: {
   if (!Array.isArray(list) || list.length === 0) {
     // Check if it's a string (error message from tool)
     if (typeof items === "string" && items.length > 0) {
-      return <p className="text-red-400 text-sm">⚠ {items.slice(0, 200)}</p>;
+      return <p className="text-red-500 dark:text-red-400 text-sm">⚠ {items.slice(0, 200)}</p>;
     }
-    return <p className="text-green-400 text-sm">{emptyText}</p>;
+    return <p className="text-green-600 dark:text-green-400 text-sm">{emptyText}</p>;
   }
   return (
     <div className="space-y-2 max-h-64 overflow-y-auto">
       {list.slice(0, maxItems).map(renderItem)}
-      {list.length > maxItems && <p className="text-xs text-gray-500">+{list.length - maxItems} more</p>}
+      {list.length > maxItems && <p className="text-xs text-gray-400 dark:text-gray-500">+{list.length - maxItems} more</p>}
     </div>
   );
 }
@@ -156,10 +157,10 @@ function DashboardContent() {
 
   if (error) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
-        <div className="bg-red-950 border border-red-800 rounded-xl p-6 max-w-md">
-          <p className="text-red-300">Error: {error}</p>
-          <button onClick={() => router.push("/")} className="mt-4 px-4 py-2 bg-gray-800 text-white rounded-lg">← Back</button>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
+        <div className="bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 rounded-xl p-6 max-w-md">
+          <p className="text-red-600 dark:text-red-300">Error: {error}</p>
+          <button onClick={() => router.push("/")} className="mt-4 px-4 py-2 bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-white rounded-lg">← Back</button>
         </div>
       </div>
     );
@@ -177,7 +178,7 @@ function DashboardContent() {
   const adminRisks = data?.adminRisks;
 
   return (
-    <div className="min-h-screen bg-gray-950 p-6">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 p-6">
       {/* Investigation Pane */}
       {showInvestPane && (
         <InvestigationPane onClose={() => setShowInvestPane(false)} />
@@ -187,10 +188,10 @@ function DashboardContent() {
         {/* Header */}
         <div className="flex items-center justify-between mb-6">
           <div className="flex items-center gap-3">
-            <h1 className="text-2xl font-bold text-white">🛡️ Security Dashboard</h1>
+            <h1 className="text-2xl font-bold text-gray-900 dark:text-white">🛡️ Security Dashboard</h1>
             <button
               onClick={() => setShowInvestPane(!showInvestPane)}
-              className={`px-3 py-1.5 rounded-lg text-sm font-medium ${showInvestPane ? "bg-blue-600 text-white" : "bg-gray-800 hover:bg-gray-700 text-gray-300"}`}
+              className={`px-3 py-1.5 rounded-lg text-sm font-medium ${showInvestPane ? "bg-blue-600 text-white" : "bg-gray-200 hover:bg-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"}`}
             >
               🔍 Investigate
             </button>
@@ -199,7 +200,7 @@ function DashboardContent() {
             <select
               value={hoursBack}
               onChange={(e) => { const h = Number(e.target.value); setHoursBack(h); fetchData(h); }}
-              className="px-2 py-1 bg-gray-800 border border-gray-700 rounded-lg text-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+              className="px-2 py-1 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-700 dark:text-gray-300 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             >
               <option value={1}>Last 1 hour</option>
               <option value={6}>Last 6 hours</option>
@@ -208,8 +209,9 @@ function DashboardContent() {
               <option value={168}>Last 7 days</option>
               <option value={720}>Last 30 days</option>
             </select>
-            <span className="text-xs text-gray-500 font-mono">{tenantId.slice(0, 8)}...</span>
-            <button onClick={async () => { await fetch("/api/session", { method: "DELETE" }); router.push("/"); }} className="px-3 py-1.5 bg-gray-800 hover:bg-gray-700 text-gray-300 text-sm rounded-lg">
+            <span className="text-xs text-gray-400 dark:text-gray-500 font-mono">{tenantId.slice(0, 8)}...</span>
+            <ThemeToggle />
+            <button onClick={async () => { await fetch("/api/session", { method: "DELETE" }); router.push("/"); }} className="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300 text-sm rounded-lg">
               Disconnect
             </button>
           </div>
@@ -219,18 +221,18 @@ function DashboardContent() {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 mb-4">
           <Card title="Secure Score" icon="📊" loading={loading}>
             {score?.error ? (
-              <p className="text-red-400 text-sm">{typeof score.error === "string" ? score.error : JSON.stringify(score.error)}</p>
+              <p className="text-red-500 dark:text-red-400 text-sm">{typeof score.error === "string" ? score.error : JSON.stringify(score.error)}</p>
             ) : score?.currentScore !== undefined && score?.currentScore !== 0 ? (
               <div>
                 <div className="flex items-end gap-2">
-                  <span className="text-4xl font-bold text-white">
+                  <span className="text-4xl font-bold text-gray-900 dark:text-white">
                     {score.percentageScore ?? Math.round((score.currentScore / (score.maxScore || 100)) * 100)}%
                   </span>
-                  <span className="text-sm text-gray-500 mb-1">
+                  <span className="text-sm text-gray-400 dark:text-gray-500 mb-1">
                     {Math.round(score.currentScore)}/{Math.round(score.maxScore ?? 100)} pts
                   </span>
                 </div>
-                <div className="mt-2 w-full bg-gray-800 rounded-full h-2.5">
+                <div className="mt-2 w-full bg-gray-200 dark:bg-gray-800 rounded-full h-2.5">
                   <div
                     className={`h-2.5 rounded-full ${score.percentageScore >= 70 ? "bg-green-500" : score.percentageScore >= 40 ? "bg-yellow-500" : "bg-red-500"}`}
                     style={{ width: `${(score.currentScore / (score.maxScore || 100)) * 100}%` }}
@@ -238,13 +240,13 @@ function DashboardContent() {
                 </div>
                 {trends.length > 1 && (
                   <div className="mt-3">
-                    <p className="text-xs text-gray-500 mb-1">30-day trend</p>
+                    <p className="text-xs text-gray-400 dark:text-gray-500 mb-1">30-day trend</p>
                     <Sparkline data={trends.map((t: any) => t.secure_score_pct ?? 0)} color="#3b82f6" />
                   </div>
                 )}
               </div>
             ) : (
-              <p className="text-gray-500 text-sm">Requires app registration with SecurityEvents.Read.All</p>
+              <p className="text-gray-400 dark:text-gray-500 text-sm">Requires app registration with SecurityEvents.Read.All</p>
             )}
           </Card>
 
@@ -253,8 +255,8 @@ function DashboardContent() {
               items={alerts}
               emptyText="✓ No active alerts"
               renderItem={(a, i) => (
-                <div key={i} className="flex items-center justify-between bg-gray-800 rounded-lg px-3 py-2">
-                  <span className="text-sm text-gray-300 truncate mr-2">{a.title ?? a.displayName ?? "Alert"}</span>
+                <div key={i} className="flex items-center justify-between bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2">
+                  <span className="text-sm text-gray-700 dark:text-gray-300 truncate mr-2">{a.title ?? a.displayName ?? "Alert"}</span>
                   <SeverityBadge severity={a.severity ?? "unknown"} />
                 </div>
               )}
@@ -271,8 +273,8 @@ function DashboardContent() {
               items={risky}
               emptyText="✓ No risky users"
               renderItem={(u, i) => (
-                <div key={i} className="flex items-center justify-between bg-gray-800 rounded-lg px-3 py-2">
-                  <span className="text-sm text-gray-300 truncate mr-2">{u.userDisplayName ?? u.userPrincipalName ?? "User"}</span>
+                <div key={i} className="flex items-center justify-between bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2">
+                  <span className="text-sm text-gray-700 dark:text-gray-300 truncate mr-2">{u.userDisplayName ?? u.userPrincipalName ?? "User"}</span>
                   <SeverityBadge severity={u.riskLevel ?? "none"} />
                 </div>
               )}
@@ -285,8 +287,8 @@ function DashboardContent() {
           <Card title={`Recent Sign-ins (${hoursBack}h)`} icon="🔑" loading={loading}>
             {(() => {
               const rawList = Array.isArray(signIns) ? signIns : signIns?.value ?? signIns?.signIns ?? [];
-              if (signIns?.error) return <p className="text-red-400 text-sm">⚠ {typeof signIns.error === "string" ? signIns.error : JSON.stringify(signIns.error)}</p>;
-              if (!Array.isArray(rawList) || rawList.length === 0) return <p className="text-green-400 text-sm">No recent sign-in data</p>;
+              if (signIns?.error) return <p className="text-red-500 dark:text-red-400 text-sm">⚠ {typeof signIns.error === "string" ? signIns.error : JSON.stringify(signIns.error)}</p>;
+              if (!Array.isArray(rawList) || rawList.length === 0) return <p className="text-green-600 dark:text-green-400 text-sm">No recent sign-in data</p>;
               // Group by user
               const grouped: Record<string, { count: number; user: string; apps: Set<string>; locations: Set<string>; riskLevel: string; earliest: string; latest: string }> = {};
               for (const s of rawList) {
@@ -305,24 +307,24 @@ function DashboardContent() {
               return (
                 <div className="space-y-2 max-h-64 overflow-y-auto">
                   {users.slice(0, 8).map((u, i) => (
-                    <div key={i} className="bg-gray-800 rounded-lg px-3 py-2">
+                    <div key={i} className="bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2">
                       <div className="flex items-center justify-between">
-                        <span className="text-sm text-gray-300 truncate mr-2">{u.user}</span>
+                        <span className="text-sm text-gray-700 dark:text-gray-300 truncate mr-2">{u.user}</span>
                         <div className="flex items-center gap-2 shrink-0">
-                          <span className="text-xs text-gray-500">{u.count}x</span>
+                          <span className="text-xs text-gray-400 dark:text-gray-500">{u.count}x</span>
                           <SeverityBadge severity={u.riskLevel} />
                         </div>
                       </div>
                       <div className="flex items-center gap-1.5 mt-1 flex-wrap">
                         {[...u.apps].slice(0, 3).map((app, j) => (
-                          <span key={j} className="text-xs bg-gray-700 text-gray-400 px-1.5 py-0.5 rounded">{app}</span>
+                          <span key={j} className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-500 dark:text-gray-400 px-1.5 py-0.5 rounded">{app}</span>
                         ))}
-                        {u.apps.size > 3 && <span className="text-xs text-gray-600">+{u.apps.size - 3}</span>}
-                        {u.locations.size > 0 && <span className="text-xs text-gray-600">• {[...u.locations][0]}</span>}
+                        {u.apps.size > 3 && <span className="text-xs text-gray-400 dark:text-gray-600">+{u.apps.size - 3}</span>}
+                        {u.locations.size > 0 && <span className="text-xs text-gray-400 dark:text-gray-600">• {[...u.locations][0]}</span>}
                       </div>
                     </div>
                   ))}
-                  {users.length > 8 && <p className="text-xs text-gray-500">+{users.length - 8} more users</p>}
+                  {users.length > 8 && <p className="text-xs text-gray-400 dark:text-gray-500">+{users.length - 8} more users</p>}
                 </div>
               );
             })()}
@@ -333,14 +335,14 @@ function DashboardContent() {
               items={devices}
               emptyText="✓ All devices compliant"
               renderItem={(d, i) => (
-                <div key={i} className="bg-gray-800 rounded-lg px-3 py-2">
+                <div key={i} className="bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-300 truncate mr-2">{d.deviceName ?? "Device"}</span>
+                    <span className="text-sm text-gray-700 dark:text-gray-300 truncate mr-2">{d.deviceName ?? "Device"}</span>
                     <SeverityBadge severity={d.complianceState ?? "unknown"} />
                   </div>
                   <div className="flex items-center gap-2 mt-1">
-                    {d.operatingSystem && <span className="text-xs text-gray-500">{d.operatingSystem}</span>}
-                    {d.userPrincipalName && <span className="text-xs text-gray-600">• {d.userPrincipalName}</span>}
+                    {d.operatingSystem && <span className="text-xs text-gray-400 dark:text-gray-500">{d.operatingSystem}</span>}
+                    {d.userPrincipalName && <span className="text-xs text-gray-500 dark:text-gray-600">• {d.userPrincipalName}</span>}
                   </div>
                 </div>
               )}
@@ -352,8 +354,8 @@ function DashboardContent() {
               items={purview}
               emptyText="✓ No compliance alerts"
               renderItem={(p, i) => (
-                <div key={i} className="flex items-center justify-between bg-gray-800 rounded-lg px-3 py-2">
-                  <span className="text-sm text-gray-300 truncate mr-2">{p.title ?? p.displayName ?? "Alert"}</span>
+                <div key={i} className="flex items-center justify-between bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2">
+                  <span className="text-sm text-gray-700 dark:text-gray-300 truncate mr-2">{p.title ?? p.displayName ?? "Alert"}</span>
                   <SeverityBadge severity={p.severity ?? "unknown"} />
                 </div>
               )}
@@ -368,12 +370,12 @@ function DashboardContent() {
               items={insiderRisk}
               emptyText="✓ No insider risk alerts"
               renderItem={(a, i) => (
-                <div key={i} className="bg-gray-800 rounded-lg px-3 py-2">
+                <div key={i} className="bg-gray-100 dark:bg-gray-800 rounded-lg px-3 py-2">
                   <div className="flex items-center justify-between">
-                    <span className="text-sm text-gray-300 truncate mr-2">{a.title ?? "Alert"}</span>
+                    <span className="text-sm text-gray-700 dark:text-gray-300 truncate mr-2">{a.title ?? "Alert"}</span>
                     <SeverityBadge severity={a.severity ?? "unknown"} />
                   </div>
-                  {a.createdDateTime && <span className="text-xs text-gray-500">{new Date(a.createdDateTime).toLocaleString()}</span>}
+                  {a.createdDateTime && <span className="text-xs text-gray-400 dark:text-gray-500">{new Date(a.createdDateTime).toLocaleString()}</span>}
                 </div>
               )}
             />
@@ -381,128 +383,128 @@ function DashboardContent() {
 
           <Card title="Privileged Admin Risks" icon="👑" loading={loading}>
             {adminRisks?.error ? (
-              <p className="text-red-400 text-sm">⚠ {typeof adminRisks.error === "string" ? adminRisks.error : JSON.stringify(adminRisks.error)}</p>
+              <p className="text-red-500 dark:text-red-400 text-sm">⚠ {typeof adminRisks.error === "string" ? adminRisks.error : JSON.stringify(adminRisks.error)}</p>
             ) : adminRisks?.summary ? (
               <div>
                 <div className="flex gap-4 mb-3">
                   <div className="text-center">
-                    <span className="text-2xl font-bold text-white">{adminRisks.summary.totalAdmins}</span>
-                    <p className="text-xs text-gray-500">Admins</p>
+                    <span className="text-2xl font-bold text-gray-900 dark:text-white">{adminRisks.summary.totalAdmins}</span>
+                    <p className="text-xs text-gray-400 dark:text-gray-500">Admins</p>
                   </div>
                   {adminRisks.summary.critical > 0 && (
                     <div className="text-center">
                       <span className="text-2xl font-bold text-red-400">{adminRisks.summary.critical}</span>
-                      <p className="text-xs text-gray-500">Critical</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">Critical</p>
                     </div>
                   )}
                   {adminRisks.summary.high > 0 && (
                     <div className="text-center">
                       <span className="text-2xl font-bold text-yellow-400">{adminRisks.summary.high}</span>
-                      <p className="text-xs text-gray-500">High</p>
+                      <p className="text-xs text-gray-400 dark:text-gray-500">High</p>
                     </div>
                   )}
                 </div>
                 {adminRisks.findings?.length > 0 ? (
                   <div className="space-y-1.5 max-h-48 overflow-y-auto">
                     {adminRisks.findings.map((f: any, i: number) => (
-                      <div key={i} className="bg-gray-800 rounded px-3 py-2">
+                      <div key={i} className="bg-gray-100 dark:bg-gray-800 rounded px-3 py-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-sm text-gray-300 truncate mr-2">{f.user}</span>
+                          <span className="text-sm text-gray-700 dark:text-gray-300 truncate mr-2">{f.user}</span>
                           <div className="flex items-center gap-2">
                             <button
                               onClick={() => handleInvestigate({ type: f.risk, user: f.user, detail: f.detail, severity: f.severity })}
                               disabled={investigating !== null}
-                              className="text-xs text-blue-400 hover:text-blue-300 disabled:text-gray-600"
+                              className="text-xs text-blue-500 dark:text-blue-400 hover:text-blue-400 dark:hover:text-blue-300 disabled:text-gray-400 dark:disabled:text-gray-600"
                             >
                               {investigating === `${f.risk}-${f.user}-${f.detail}` ? "🔍..." : "🔍"}
                             </button>
                             <SeverityBadge severity={f.severity} />
                           </div>
                         </div>
-                        <p className="text-xs text-gray-500 mt-0.5">{f.detail}</p>
+                        <p className="text-xs text-gray-400 dark:text-gray-500 mt-0.5">{f.detail}</p>
                       </div>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-green-400 text-sm">✓ No admin account risks found</p>
+                  <p className="text-green-600 dark:text-green-400 text-sm">✓ No admin account risks found</p>
                 )}
               </div>
             ) : (
-              <p className="text-gray-500 text-sm">No admin risk data</p>
+              <p className="text-gray-400 dark:text-gray-500 text-sm">No admin risk data</p>
             )}
           </Card>
 
           <Card title="Data Security Posture" icon="🏗️" loading={loading}>
             {dataPosture?.error ? (
-              <p className="text-red-400 text-sm">⚠ {typeof dataPosture.error === "string" ? dataPosture.error : JSON.stringify(dataPosture.error)}</p>
+              <p className="text-red-500 dark:text-red-400 text-sm">⚠ {typeof dataPosture.error === "string" ? dataPosture.error : JSON.stringify(dataPosture.error)}</p>
             ) : dataPosture ? (
               <div className="space-y-3">
                 {dataPosture.sensitivityLabels && !dataPosture.sensitivityLabels.error && (
                   <div>
-                    <p className="text-xs font-medium text-gray-400 mb-1">Sensitivity Labels</p>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">Sensitivity Labels</p>
                     <div className="flex flex-wrap gap-1.5">
                       {(dataPosture.sensitivityLabels.labels ?? []).slice(0, 8).map((l: any, i: number) => (
-                        <span key={i} className={`text-xs px-2 py-0.5 rounded ${l.isActive ? "bg-blue-900 text-blue-300" : "bg-gray-700 text-gray-500"}`}>
+                        <span key={i} className={`text-xs px-2 py-0.5 rounded ${l.isActive ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" : "bg-gray-200 text-gray-400 dark:bg-gray-700 dark:text-gray-500"}`}>
                           {l.name}
                         </span>
                       ))}
                       {(dataPosture.sensitivityLabels.count ?? 0) > 8 && (
-                        <span className="text-xs text-gray-500">+{dataPosture.sensitivityLabels.count - 8} more</span>
+                        <span className="text-xs text-gray-400 dark:text-gray-500">+{dataPosture.sensitivityLabels.count - 8} more</span>
                       )}
                     </div>
                   </div>
                 )}
                 {dataPosture.dlpAlerts && !dataPosture.dlpAlerts.error && (
                   <div>
-                    <p className="text-xs font-medium text-gray-400 mb-1">DLP Alert Trends</p>
+                    <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-1">DLP Alert Trends</p>
                     <div className="flex gap-3">
                       {Object.entries(dataPosture.dlpAlerts.bySeverity ?? {}).map(([sev, count]) => (
                         <div key={sev} className="text-center">
-                          <span className="text-lg font-bold text-white">{count as number}</span>
-                          <p className="text-xs text-gray-500">{sev}</p>
+                          <span className="text-lg font-bold text-gray-900 dark:text-white">{count as number}</span>
+                          <p className="text-xs text-gray-400 dark:text-gray-500">{sev}</p>
                         </div>
                       ))}
                       {Object.keys(dataPosture.dlpAlerts.bySeverity ?? {}).length === 0 && (
-                        <p className="text-green-400 text-sm">✓ No DLP alerts</p>
+                        <p className="text-green-600 dark:text-green-400 text-sm">✓ No DLP alerts</p>
                       )}
                     </div>
                   </div>
                 )}
               </div>
             ) : (
-              <p className="text-gray-500 text-sm">No posture data available</p>
+              <p className="text-gray-400 dark:text-gray-500 text-sm">No posture data available</p>
             )}
           </Card>
         </div>
 
         {/* Improvement Actions — full width */}
         {!loading && score && !score.error && score?.topActions?.length > 0 && (
-          <div className="bg-gray-900 rounded-xl border border-gray-800 p-5 mb-4">
-            <h2 className="text-lg font-semibold text-white mb-4">
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 mb-4">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
               🎯 Improvement Actions
-              <span className="text-sm text-gray-500 font-normal ml-2">{score.topActions.length} recommendations</span>
+              <span className="text-sm text-gray-400 dark:text-gray-500 font-normal ml-2">{score.topActions.length} recommendations</span>
             </h2>
             <div className="space-y-2">
               {score.topActions.map((a: any, i: number) => (
-                <div key={i} className="bg-gray-800 rounded-lg px-4 py-3">
+                <div key={i} className="bg-gray-100 dark:bg-gray-800 rounded-lg px-4 py-3">
                   <div className="flex items-center justify-between cursor-pointer" onClick={() => setExpandedAction(expandedAction === i ? null : i)}>
-                    <span className="text-sm text-gray-200 truncate mr-3">{a.name}</span>
+                    <span className="text-sm text-gray-800 dark:text-gray-200 truncate mr-3">{a.name}</span>
                     <div className="flex items-center gap-3 shrink-0">
                       {a.implementationStatus && (
                         <span className={`text-xs px-2 py-0.5 rounded ${
-                          a.implementationStatus === "implemented" ? "bg-green-900 text-green-300" :
-                          a.implementationStatus === "thirdParty" ? "bg-purple-900 text-purple-300" :
-                          a.implementationStatus === "planned" ? "bg-blue-900 text-blue-300" :
-                          "bg-gray-700 text-gray-400"
+                          a.implementationStatus === "implemented" ? "bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300" :
+                          a.implementationStatus === "thirdParty" ? "bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300" :
+                          a.implementationStatus === "planned" ? "bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300" :
+                          "bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400"
                         }`}>{a.implementationStatus}</span>
                       )}
                       <span className="text-sm font-medium text-blue-400 w-16 text-right">+{a.maxScore - (a.currentScore ?? 0)} pts</span>
-                      <span className="text-gray-500 w-4 text-center">{expandedAction === i ? "▲" : "▼"}</span>
+                      <span className="text-gray-400 dark:text-gray-500 w-4 text-center">{expandedAction === i ? "▲" : "▼"}</span>
                     </div>
                   </div>
                   {expandedAction === i && a.description && (
                     <div
-                      className="text-sm text-gray-400 mt-3 border-t border-gray-700 pt-3 prose prose-invert prose-sm max-w-none [&_a]:text-blue-400 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1 [&_p]:my-1.5"
+                      className="text-sm text-gray-500 dark:text-gray-400 mt-3 border-t border-gray-200 dark:border-gray-700 pt-3 prose prose-sm dark:prose-invert max-w-none [&_a]:text-blue-500 dark:[&_a]:text-blue-400 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:my-1 [&_p]:my-1.5"
                       dangerouslySetInnerHTML={{ __html: a.description }}
                     />
                   )}
@@ -514,19 +516,19 @@ function DashboardContent() {
 
         {/* Security Recommendations — full width */}
         {!loading && recommendations && (
-          <div className="bg-gray-900 rounded-xl border border-gray-800 p-5 mb-4">
-            <h2 className="text-lg font-semibold text-white mb-4">🔒 Security Recommendations</h2>
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 mb-4">
+            <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">🔒 Security Recommendations</h2>
             {recommendations?.error ? (
-              <p className="text-red-400 text-sm">⚠ {typeof recommendations.error === "string" ? recommendations.error : JSON.stringify(recommendations.error)}</p>
+              <p className="text-red-500 dark:text-red-400 text-sm">⚠ {typeof recommendations.error === "string" ? recommendations.error : JSON.stringify(recommendations.error)}</p>
             ) : recommendations?.recommendations?.length > 0 ? (
               <div className="space-y-2">
                 {recommendations.recommendations.map((r: any, i: number) => (
-                  <div key={i} className="bg-gray-800 rounded-lg px-4 py-3">
+                  <div key={i} className="bg-gray-100 dark:bg-gray-800 rounded-lg px-4 py-3">
                     <div className="flex items-center justify-between">
-                      <span className="text-sm text-gray-200 truncate mr-3">{r.name}</span>
+                      <span className="text-sm text-gray-800 dark:text-gray-200 truncate mr-3">{r.name}</span>
                       <div className="flex items-center gap-3 shrink-0">
-                        {r.category && <span className="text-xs px-2 py-0.5 rounded bg-gray-700 text-gray-400">{r.category}</span>}
-                        {r.userImpact && <span className="text-xs text-gray-500">Impact: {r.userImpact}</span>}
+                        {r.category && <span className="text-xs px-2 py-0.5 rounded bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400">{r.category}</span>}
+                        {r.userImpact && <span className="text-xs text-gray-400 dark:text-gray-500">Impact: {r.userImpact}</span>}
                         <span className="text-sm font-medium text-blue-400">+{r.maxScore} pts</span>
                       </div>
                     </div>
@@ -770,7 +772,7 @@ function DashboardContent() {
         )}
 
         {/* Repo Scan */}
-        <div className="bg-gray-900 rounded-xl border border-gray-800 p-5">
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5">
           <h2 className="text-lg font-semibold text-white mb-3">🔍 Repository Scan</h2>
           <form onSubmit={handleScan} className="flex gap-3">
             <input
@@ -797,8 +799,9 @@ function DashboardContent() {
 
 export default function DashboardPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen bg-gray-950 flex items-center justify-center"><p className="text-gray-400">Loading...</p></div>}>
+    <Suspense fallback={<div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center"><p className="text-gray-400">Loading...</p></div>}>
       <DashboardContent />
     </Suspense>
   );
 }
+
