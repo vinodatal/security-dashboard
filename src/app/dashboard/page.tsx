@@ -542,7 +542,7 @@ function DashboardContent() {
         )}
 
         {/* Alert Rules */}
-        <div className="bg-gray-900 rounded-xl border border-gray-800 p-5 mb-4">
+        <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 mb-4">
           <h2 className="text-lg font-semibold text-white mb-4">🔔 Alert Rules</h2>
           <form onSubmit={async (e) => {
             e.preventDefault();
@@ -579,7 +579,7 @@ function DashboardContent() {
               </div>
             )}
             <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-              <input name="name" placeholder="Rule name" required defaultValue={editingRule?.name ?? ""} key={`name-${editingRule?.id ?? "new"}`} className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500" />
+              <input name="name" placeholder="Rule name" required defaultValue={editingRule?.name ?? ""} key={`name-${editingRule?.id ?? "new"}`} className="px-3 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-gray-500" />
               <select name="metric" defaultValue={editingRule?.metric ?? "secure_score_pct"} key={`metric-${editingRule?.id ?? "new"}`} className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm">
                 <option value="secure_score_pct">Secure Score %</option>
                 <option value="defender_alerts">Defender Alerts</option>
@@ -597,14 +597,14 @@ function DashboardContent() {
                 <option value="gte">at or above</option>
                 <option value="lte">at or below</option>
               </select>
-              <input name="threshold" type="number" placeholder="Threshold" required defaultValue={editingRule?.threshold ?? ""} key={`thresh-${editingRule?.id ?? "new"}`} className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500" />
+              <input name="threshold" type="number" placeholder="Threshold" required defaultValue={editingRule?.threshold ?? ""} key={`thresh-${editingRule?.id ?? "new"}`} className="px-3 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-gray-500" />
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-2">
               <select name="notifyType" defaultValue={editingRule?.notify_type ?? "webhook"} key={`type-${editingRule?.id ?? "new"}`} className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm">
                 <option value="webhook">Webhook (Teams/Slack)</option>
                 <option value="email">Email</option>
               </select>
-              <input name="notifyTarget" placeholder="Webhook URL or email" required defaultValue={editingRule?.notify_target ?? ""} key={`target-${editingRule?.id ?? "new"}`} className="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white text-sm placeholder-gray-500" />
+              <input name="notifyTarget" placeholder="Webhook URL or email" required defaultValue={editingRule?.notify_target ?? ""} key={`target-${editingRule?.id ?? "new"}`} className="px-3 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg text-gray-900 dark:text-white text-sm placeholder-gray-400 dark:placeholder-gray-500" />
               <button type="submit" className="px-4 py-2 bg-green-700 hover:bg-green-600 text-white rounded-lg text-sm font-medium">{editingRule ? "Update Rule" : "Add Rule"}</button>
             </div>
           </form>
@@ -701,9 +701,9 @@ function DashboardContent() {
 
         {/* Compliance Assessment */}
         {compliance?.compliance && (
-          <div className="bg-gray-900 rounded-xl border border-gray-800 p-5 mb-4">
+          <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-5 mb-4">
             <div className="flex items-center justify-between mb-4">
-              <h2 className="text-lg font-semibold text-white">📜 Compliance Assessment</h2>
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">📜 Compliance Assessment</h2>
               <a
                 href={`/api/reports?tenantId=${encodeURIComponent(tenantId)}&days=30`}
                 target="_blank"
@@ -716,7 +716,7 @@ function DashboardContent() {
               {compliance.compliance.map((fw: any) => (
                 <div key={fw.framework} className="bg-gray-800 rounded-lg p-4">
                   <div className="flex items-center justify-between mb-2">
-                    <span className="text-sm font-semibold text-white">{fw.framework}</span>
+                    <span className="text-sm font-semibold text-gray-900 dark:text-white">{fw.framework}</span>
                     <span className={`text-lg font-bold ${fw.score >= 70 ? "text-green-400" : fw.score >= 40 ? "text-yellow-400" : "text-red-400"}`}>
                       {fw.score}%
                     </span>
@@ -804,4 +804,5 @@ export default function DashboardPage() {
     </Suspense>
   );
 }
+
 

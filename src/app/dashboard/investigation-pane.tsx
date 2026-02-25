@@ -100,10 +100,10 @@ export function InvestigationPane({ onClose }: { onClose: () => void }) {
   (InvestigationPane as any)._investigate = sendInvestigation;
 
   return (
-    <div className="fixed inset-y-0 left-0 w-[480px] bg-gray-950 border-r border-gray-800 flex flex-col z-50 shadow-2xl">
+    <div className="fixed inset-y-0 left-0 w-[480px] bg-white dark:bg-gray-950 border-r border-gray-200 dark:border-gray-800 flex flex-col z-50 shadow-2xl">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-800 shrink-0">
-        <h2 className="text-sm font-semibold text-white">🔍 Investigation</h2>
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800 shrink-0">
+        <h2 className="text-sm font-semibold text-gray-900 dark:text-white">🔍 Investigation</h2>
         <div className="flex items-center gap-2">
           {messages.length > 0 && (
             <button onClick={() => setMessages([])} className="text-xs text-gray-500 hover:text-gray-300">Clear</button>
@@ -133,11 +133,11 @@ export function InvestigationPane({ onClose }: { onClose: () => void }) {
 
         {messages.map((msg, i) => (
           <div key={i} className={msg.role === "user" ? "ml-8" : ""}>
-            <div className={`rounded-lg px-4 py-3 ${msg.role === "user" ? "bg-blue-900/40 border border-blue-800" : "bg-gray-900 border border-gray-800"}`}>
+            <div className={`rounded-lg px-4 py-3 ${msg.role === "user" ? "bg-blue-50 dark:bg-blue-900/40 border border-blue-200 dark:border-blue-800" : "bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-800"}`}>
               {msg.role === "assistant" && msg.toolCalls?.length ? (
                 <div className="flex flex-wrap gap-1 mb-2">
                   {msg.toolCalls.map((tc, j) => (
-                    <span key={j} className="text-xs bg-gray-800 text-gray-400 px-1.5 py-0.5 rounded">{tc.tool}</span>
+                    <span key={j} className="text-xs bg-gray-200 dark:bg-gray-800 text-gray-600 dark:text-gray-400 px-1.5 py-0.5 rounded">{tc.tool}</span>
                   ))}
                 </div>
               ) : null}
@@ -179,7 +179,7 @@ export function InvestigationPane({ onClose }: { onClose: () => void }) {
 
               {/* Follow-up suggestions */}
               {msg.role === "assistant" && msg.suggestions && i === messages.length - 1 && !loading && (
-                <div className="mt-3 pt-3 border-t border-gray-800 space-y-1.5">
+                <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-800 space-y-1.5">
                   <p className="text-xs text-gray-600">Follow up:</p>
                   {msg.suggestions.map((s, j) => (
                     <button
@@ -205,7 +205,7 @@ export function InvestigationPane({ onClose }: { onClose: () => void }) {
       </div>
 
       {/* Input */}
-      <form onSubmit={handleSubmit} className="p-3 border-t border-gray-800 shrink-0">
+      <form onSubmit={handleSubmit} className="p-3 border-t border-gray-200 dark:border-gray-800 shrink-0">
         <div className="flex gap-2">
           <input
             value={input}
@@ -226,3 +226,4 @@ export function InvestigationPane({ onClose }: { onClose: () => void }) {
     </div>
   );
 }
+
