@@ -3,6 +3,7 @@
 import { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { MermaidDiagram } from "./mermaid-diagram";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -31,8 +32,8 @@ const FOLLOW_UPS: Record<string, string[]> = {
     "What's the least privilege recommendation?",
   ],
   custom: [
+    "Map attack paths for privileged admins",
     "Show all privileged users without MFA",
-    "List stale admin accounts older than 60 days",
     "What are the top security risks in this tenant?",
     "Summarize the security posture for an executive report",
   ],
@@ -160,7 +161,7 @@ export function InvestigationPane({ onClose }: { onClose: () => void }) {
                     code({ className, children, ...props }) {
                       const lang = className?.replace("language-", "") ?? "";
                       if (lang === "mermaid") {
-                        return null; // Skip mermaid diagrams
+                        return <MermaidDiagram code={String(children).trim()} />;
                       }
                       if (!className) {
                         return <code {...props}>{children}</code>;

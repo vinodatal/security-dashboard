@@ -52,6 +52,7 @@ const TOOL_ROUTES: Record<string, string[]> = {
   excessive_roles:  ["get_entra_user_details", "get_entra_audit_logs", "detect_privileged_user_risks"],
   risky_user:       ["get_entra_risky_users", "get_entra_user_details", "get_entra_signin_logs"],
   compromised:      ["get_entra_user_details", "get_entra_signin_logs", "get_entra_audit_logs", "get_defender_alerts"],
+  attack_path:      ["map_attack_paths", "detect_privileged_user_risks", "get_entra_user_details"],
 
   // Defender & incidents
   defender:         ["get_defender_alerts", "get_defender_incident", "get_defender_incident_alerts", "run_hunting_query"],
@@ -92,6 +93,7 @@ const KEYWORD_ROUTES: Array<{ keywords: string[]; route: string }> = [
   { keywords: ["excessive", "too many roles", "privilege"], route: "excessive_roles" },
   { keywords: ["risky user", "risk level", "at risk"], route: "risky_user" },
   { keywords: ["compromised", "breach", "stolen", "revoke"], route: "compromised" },
+  { keywords: ["attack path", "lateral movement", "escalat", "blast radius"], route: "attack_path" },
   { keywords: ["defender", "alert", "security alert"], route: "defender" },
   { keywords: ["incident"], route: "incident" },
   { keywords: ["hunting", "kql", "advanced hunting"], route: "hunting" },
@@ -159,6 +161,11 @@ const SYSTEM_PROMPT = `You are a security investigation and remediation assistan
 - **Risk Assessment** (Critical/High/Medium/Low)
 - **Remediation Steps** with exact az CLI commands
 - **Verification** — how to confirm the fix
+
+When the map_attack_paths tool returns a mermaid field, include it in your response as a mermaid code block:
+\`\`\`mermaid
+<paste the mermaid content here>
+\`\`\`
 
 Common commands:
 - Revoke sessions: \`az rest --method POST --uri "https://graph.microsoft.com/v1.0/users/<id>/revokeSignInSessions"\`
