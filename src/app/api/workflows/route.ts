@@ -150,6 +150,34 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(result);
       }
 
+      case "execute-agentic": {
+        if (!body.workflowName || !body.steps) {
+          return NextResponse.json({ error: "workflowName and steps required" }, { status: 400 });
+        }
+        const { executeAgenticWorkflow } = await import("@/lib/agent/agentic-executor");
+
+        const agenticSteps = (body.steps as Array<Record<string, unknown>>).map((s) => ({
+          id: String(s.id ?? `step-${Math.random().toString(36).slice(2, 8)}`),
+          name: String(s.name ?? ""),
+          tool: String(s.tool ?? ""),
+          params: (s.params ?? s.resolvedParams ?? {}) as Record<string, unknown>,
+          resolvedParams: (s.resolvedParams ?? s.params ?? {}) as Record<string, unknown>,
+        }));
+
+        const agenticResult = await executeAgenticWorkflow(
+          String(body.workflowName),
+          agenticSteps,
+          tenantId,
+          userToken,
+          {
+            category: body.workflowCategory ? String(body.workflowCategory) : undefined,
+            tags: Array.isArray(body.workflowTags) ? body.workflowTags.map(String) : undefined,
+          }
+        );
+
+        return NextResponse.json(agenticResult);
+      }
+
       case "save": {
         if (!body.workflow) {
           return NextResponse.json({ error: "workflow object required" }, { status: 400 });

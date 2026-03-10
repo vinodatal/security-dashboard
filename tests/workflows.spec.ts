@@ -606,3 +606,59 @@ test.describe("Skills Catalog", () => {
     }
   });
 });
+
+// ---------------------------------------------------------------------------
+// Test: Agentic Workflow Execution
+// ---------------------------------------------------------------------------
+
+test.describe("Agentic Workflow Execution", () => {
+  test("should execute workflow with AI agent that adapts based on findings", async ({ page }) => {
+    // Prepare a workflow plan
+    const plan = await apiCall(page, "prepare", { workflowId: "privileged-access-review" });
+    const steps = plan.steps ?? [];
+    console.log(`\n  Agentic execution: ${steps.length} planned steps`);
+
+    // Execute with AI agent
+    const result = (await page.request.post("/api/workflows", {
+      data: {
+        action: "execute-agentic",
+        workflowName: "Privileged Access Review",
+        steps: steps.map((s: Record<string, unknown>) => ({
+          id: s.id, name: s.name, tool: s.tool,
+          params: s.resolvedParams ?? s.params ?? {},
+          resolvedParams: s.resolvedParams ?? s.params ?? {},
+        })),
+        workflowCategory: "identity-access",
+        workflowTags: ["admin", "mfa", "privileged-access"],
+      },
+      timeout: 120_000,
+    })).json() as Record<string, unknown>;
+
+    expect(result.analysis).toBeTruthy();
+    const stepsExecuted = (result.stepsExecuted ?? []) as Array<Record<string, unknown>>;
+    const agentAdded = stepsExecuted.filter(s => s.source === "agent-added");
+    const updates = (result.updates ?? []) as Array<Record<string, unknown>>;
+
+    console.log(`  Steps executed: ${stepsExecuted.length} (${agentAdded.length} agent-added)`);
+    console.log(`  Updates: ${updates.length}`);
+    console.log(`  Duration: ${((result.totalDurationMs as number) / 1000).toFixed(1)}s`);
+
+    for (const step of stepsExecuted) {
+      const icon = step.error ? "❌" : "✅";
+      const source = step.source === "agent-added" ? " [AGENT ADDED]" : "";
+      console.log(`  ${icon} ${step.name} → ${step.tool} (${((step.durationMs as number) / 1000).toFixed(1)}s)${source}`);
+    }
+
+    if (agentAdded.length > 0) {
+      console.log("  ✅ AI agent added investigation steps beyond the plan!");
+    }
+
+    const analysisText = result.analysis as string;
+    console.log(`  Analysis: ${analysisText.length} chars`);
+    console.log(`  Has verdict: ${analysisText.includes("Verdict") ? "✅" : "❌"}`);
+    console.log(`  Has risk score: ${analysisText.includes("Risk Score") || analysisText.includes("/100") ? "✅" : "❌"}`);
+
+    expect(stepsExecuted.length).toBeGreaterThanOrEqual(1);
+    expect(analysisText.length).toBeGreaterThan(200);
+  });
+});

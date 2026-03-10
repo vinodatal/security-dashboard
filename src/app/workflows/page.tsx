@@ -376,6 +376,8 @@ function ExecutionPanel({
   const [analysis, setAnalysis] = useState<string | null>(null);
   const [analyzing, setAnalyzing] = useState(false);
   const [analysisError, setAnalysisError] = useState("");
+  const [agenticMode, setAgenticMode] = useState(false);
+  const [agenticUpdates, setAgenticUpdates] = useState<Array<{ type: string; message: string; stepName?: string; toolName?: string }>>([]);
   const abortRef = useRef(false);
   const startTimeRef = useRef(Date.now());
 
@@ -547,21 +549,73 @@ function ExecutionPanel({
         </div>
 
         {/* Action buttons */}
-        <div className="flex gap-2 mt-3">
-          {!allDone ? (
-            <button
-              onClick={executeAll}
-              disabled={runningAll}
-              className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 px-4 py-2 text-sm font-medium text-white transition-colors"
-            >
-              {runningAll ? (
-                <>
-                  <span className="animate-spin inline-block">🔄</span> Running…
-                </>
-              ) : (
-                "▶ Run All Steps"
-              )}
-            </button>
+        <div className="flex gap-2 mt-3 flex-wrap">
+          {!allDone && !agenticMode ? (
+            <>
+              <button
+                onClick={executeAll}
+                disabled={runningAll}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 px-4 py-2 text-sm font-medium text-white transition-colors"
+              >
+                {runningAll ? (
+                  <>
+                    <span className="animate-spin inline-block">🔄</span> Running…
+                  </>
+                ) : (
+                  "▶ Run All Steps"
+                )}
+              </button>
+              <button
+                onClick={async () => {
+                  setAgenticMode(true);
+                  setAgenticUpdates([]);
+                  setAnalysis(null);
+                  setAnalysisError("");
+                  try {
+                    const stepsData = (plan.steps ?? []).map(s => ({
+                      id: s.id, name: s.name, tool: s.tool,
+                      params: s.resolvedParams ?? s.params ?? {},
+                      resolvedParams: s.resolvedParams ?? s.params ?? {},
+                    }));
+                    const res = (await api("execute-agentic", {
+                      workflowName: plan.workflowName,
+                      steps: stepsData,
+                      workflowCategory: workflowMeta?.category,
+                      workflowTags: workflowMeta?.tags,
+                    })) as Record<string, unknown>;
+
+                    if (res.error) {
+                      setAnalysisError(String(res.error));
+                    } else {
+                      const updates = (res.updates ?? []) as Array<{ type: string; message: string; stepName?: string; toolName?: string }>;
+                      setAgenticUpdates(updates);
+                      setAnalysis((res.analysis as string) ?? "");
+
+                      // Mark planned steps as done based on agent execution
+                      const executed = (res.stepsExecuted ?? []) as Array<Record<string, unknown>>;
+                      setSteps(prev => prev.map(s => {
+                        const match = executed.find(e => e.tool === s.tool && e.source === "planned");
+                        if (match) return { ...s, status: match.error ? "error" : "success", result: match.result, error: match.error as string | undefined, duration: match.durationMs as number };
+                        return s;
+                      }));
+                    }
+                  } catch (err: unknown) {
+                    setAnalysisError(err instanceof Error ? err.message : String(err));
+                  } finally {
+                    setAgenticMode(false);
+                  }
+                }}
+                disabled={runningAll}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 disabled:opacity-50 px-4 py-2 text-sm font-semibold text-white shadow-sm transition-all"
+              >
+                🤖 Run with AI Agent
+              </button>
+            </>
+          ) : agenticMode ? (
+            <div className="flex items-center gap-2 text-sm text-purple-600 dark:text-purple-400">
+              <span className="animate-spin inline-block">🤖</span>
+              <span>AI Agent is executing and adapting the workflow...</span>
+            </div>
           ) : null}
           {completedCount > 0 ? (
             <>
@@ -681,6 +735,45 @@ function ExecutionPanel({
               ))}
             </ul>
           </details>
+        </div>
+      ) : null}
+
+      {/* Agentic execution log */}
+      {agenticUpdates.length > 0 ? (
+        <div className="p-5 border-t border-gray-100 dark:border-gray-800 bg-purple-50 dark:bg-purple-950/20">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">🤖 AI Agent Activity Log</h3>
+          <div className="space-y-1.5 max-h-64 overflow-y-auto">
+            {agenticUpdates.map((u, i) => {
+              const icons: Record<string, string> = {
+                step_start: "▶",
+                step_result: "✅",
+                step_added: "➕",
+                step_skipped: "⏭️",
+                agent_thinking: "🤔",
+                analysis: "📊",
+                complete: "🏁",
+              };
+              const colors: Record<string, string> = {
+                step_added: "text-purple-600 dark:text-purple-400",
+                agent_thinking: "text-indigo-600 dark:text-indigo-400",
+                step_skipped: "text-gray-500",
+                complete: "text-emerald-600 dark:text-emerald-400",
+              };
+              return (
+                <div key={i} className={`text-xs flex items-start gap-2 ${colors[u.type] ?? "text-gray-700 dark:text-gray-300"}`}>
+                  <span className="shrink-0 mt-0.5">{icons[u.type] ?? "·"}</span>
+                  <span>
+                    {u.stepName ? <strong>{u.stepName}</strong> : null}
+                    {u.stepName ? " — " : ""}
+                    {u.message}
+                    {u.toolName && u.type === "step_added" ? (
+                      <code className="ml-1 text-[10px] bg-purple-100 dark:bg-purple-900 px-1 rounded">{u.toolName}</code>
+                    ) : null}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
       ) : null}
 
