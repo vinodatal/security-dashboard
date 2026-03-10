@@ -252,19 +252,45 @@ function WorkflowCard({
           {/* Steps list */}
           {workflow.steps.length > 0 ? (
             <div>
-              <h4 className="font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                Steps
+              <h4 className="font-semibold text-gray-700 dark:text-gray-300 mb-2">
+                Steps ({workflow.steps.length})
               </h4>
-              <ol className="list-decimal list-inside space-y-1 text-gray-600 dark:text-gray-400">
-                {workflow.steps.map((step) => (
-                  <li key={step.id}>
-                    {step.name}{" "}
-                    <code className="text-xs bg-gray-200 dark:bg-gray-800 rounded px-1 py-0.5 text-indigo-600 dark:text-indigo-400">
-                      {step.tool}
-                    </code>
-                  </li>
+              <div className="space-y-2">
+                {workflow.steps.map((step, idx) => (
+                  <div
+                    key={step.id}
+                    className="flex items-start gap-3 rounded-lg bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-3"
+                  >
+                    <span className="text-xs font-mono text-gray-400 mt-0.5 w-5 shrink-0">{idx + 1}.</span>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="text-sm font-medium text-gray-800 dark:text-gray-200">{step.name}</span>
+                        <code className="text-xs bg-indigo-50 dark:bg-indigo-950 border border-indigo-200 dark:border-indigo-800 rounded px-1.5 py-0.5 text-indigo-600 dark:text-indigo-400">
+                          {step.tool}
+                        </code>
+                        {step.forEach ? (
+                          <span className="text-xs text-purple-500 dark:text-purple-400">⟳ forEach (max {step.maxIterations ?? "∞"})</span>
+                        ) : null}
+                        {step.humanGate ? (
+                          <span className="text-xs text-yellow-500 dark:text-yellow-400">⚠ approval required</span>
+                        ) : null}
+                        {step.onEmpty ? (
+                          <span className="text-xs text-gray-400">empty → {step.onEmpty}</span>
+                        ) : null}
+                      </div>
+                      {step.params && Object.keys(step.params).length > 0 ? (
+                        <div className="mt-1 flex flex-wrap gap-1">
+                          {Object.entries(step.params).map(([k, v]) => (
+                            <span key={k} className="text-xs text-gray-500 dark:text-gray-500 bg-gray-100 dark:bg-gray-800 rounded px-1.5 py-0.5">
+                              {k}={typeof v === "string" ? v : JSON.stringify(v)}
+                            </span>
+                          ))}
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
                 ))}
-              </ol>
+              </div>
             </div>
           ) : null}
 
@@ -319,14 +345,14 @@ function ExecutionPanel({
   onBack: () => void;
   api: (action: string, body?: Record<string, unknown>) => Promise<unknown>;
 }) {
-  const [steps, setSteps] = useState<ExecutionStep[]>(plan.steps);
+  const [steps, setSteps] = useState<ExecutionStep[]>(plan.steps ?? []);
   const [runningAll, setRunningAll] = useState(false);
   const abortRef = useRef(false);
 
   const completedCount = steps.filter((s) => s.status === "success").length;
-  const failedCount = steps.filter((s) => s.status === "error").length;
+  const failedCount = steps.filter((s) => s.status === "error" || s.status === "failed").length;
   const totalSteps = steps.length;
-  const allDone = completedCount + failedCount === totalSteps;
+  const allDone = totalSteps > 0 && completedCount + failedCount === totalSteps;
 
   const executeStep = useCallback(
     async (stepIndex: number) => {
@@ -841,7 +867,20 @@ function WorkflowsContent() {
       setActivePlan(null);
 
       try {
-        const plan = (await api("generate", { workflowId: workflow.id })) as ExecutionPlan;
+        const raw = (await api("generate", { workflowId: workflow.id })) as Record<string, unknown>;
+        // The API may return steps at root or nested — normalize
+        const plan: ExecutionPlan = {
+          executionId: (raw.executionId as string) ?? "",
+          workflowId: (raw.workflowId as string) ?? workflow.id,
+          workflowName: (raw.workflowName as string) ?? workflow.name,
+          steps: ((raw.steps as ExecutionStep[]) ?? []).map((s) => ({
+            ...s,
+            status: s.status ?? "pending",
+          })),
+          skippedSteps: (raw.skippedSteps as ExecutionPlan["skippedSteps"]) ?? [],
+          estimatedDuration: (raw.estimatedDuration as string) ?? "",
+          instructions: (raw.instructions as string) ?? "",
+        };
         setActivePlan(plan);
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err);
