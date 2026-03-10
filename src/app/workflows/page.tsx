@@ -1029,9 +1029,10 @@ function NLCreatorModal({
                     onRunGenerated(wfToRun);
                     onClose();
                   }}
-                  className="flex-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 px-4 py-3 text-sm font-semibold text-white transition-colors"
+                  disabled={!saved}
+                  className="flex-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed px-4 py-3 text-sm font-semibold text-white transition-colors"
                 >
-                  ▶ Run Now
+                  {saved ? "▶ Run Now" : "💾 Save first to run"}
                 </button>
                 <button
                   onClick={() => {
