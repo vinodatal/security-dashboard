@@ -9,6 +9,7 @@ import {
   saveWorkflowRun,
   getWorkflowRuns,
   updateWorkflowSchedule,
+  getCustomSkills,
 } from "@/lib/db";
 import { decrypt } from "@/lib/crypto";
 
@@ -297,12 +298,58 @@ Do NOT include any markdown formatting, code fences, or explanation. Output ONLY
 
         try {
           const content = result.message.content || "";
-          // Strip any markdown code fences if present
           const jsonStr = content.replace(/```json?\n?/g, "").replace(/```/g, "").trim();
           const workflow = JSON.parse(jsonStr);
-          // Add trigger conditions if missing
           if (!workflow.triggerConditions) workflow.triggerConditions = [];
-          return NextResponse.json({ workflow, source: "generated" });
+          if (!workflow.steps) workflow.steps = [];
+          if (!workflow.tags) workflow.tags = [];
+
+          // Inject matching skill queries as additional workflow steps
+          const { BUILT_IN_SKILLS, selectRelevantSkills } = await import("@/lib/skills");
+          const customSkillRows = getCustomSkills(tenantId);
+          const customSkills = customSkillRows.map((r: Record<string, unknown>) => ({
+            ...(r.definition as Record<string, unknown>),
+            id: r.skillId,
+            name: r.name,
+            source: r.source,
+          }));
+          const allSkills = [...BUILT_IN_SKILLS, ...customSkills];
+          const matched = selectRelevantSkills(allSkills as import("@/lib/skills").SkillPackage[], {
+            category: workflow.category,
+            tags: [...(workflow.tags ?? []), ...body.description.toLowerCase().split(/\s+/)],
+            toolNames: workflow.steps.map((s: Record<string, unknown>) => s.tool),
+          });
+
+          // Add skill queries as extra steps
+          let injectedCount = 0;
+          for (const skill of matched) {
+            if (!skill.queries) continue;
+            for (const q of skill.queries) {
+              const toolName = q.target === "sentinel" ? "query_sentinel" : "run_hunting_query";
+              // Avoid duplicating if LLM already added a similar query
+              const alreadyHas = workflow.steps.some((s: Record<string, unknown>) =>
+                s.tool === toolName && JSON.stringify(s.params ?? {}).includes(q.query.substring(0, 30))
+              );
+              if (!alreadyHas) {
+                workflow.steps.push({
+                  id: `skill-${skill.id}-${q.id ?? injectedCount}`,
+                  name: `${q.name} (from ${skill.name})`,
+                  tool: toolName,
+                  description: q.description,
+                  params: { query: q.query },
+                });
+                injectedCount++;
+              }
+            }
+          }
+
+          const skillNames = matched.map((s) => s.name);
+          return NextResponse.json({
+            workflow,
+            source: "generated",
+            skillsApplied: skillNames,
+            stepsInjected: injectedCount,
+          });
         } catch {
           return NextResponse.json(
             { error: "Failed to parse generated workflow", raw: result.message.content },
