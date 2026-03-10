@@ -117,85 +117,31 @@ export async function POST(req: NextRequest) {
         if (!body.workflowName || !body.steps) {
           return NextResponse.json({ error: "workflowName and steps required" }, { status: 400 });
         }
-        const { chatCompletion } = await import("@/lib/agent/llm");
+        const { analyzeWorkflow } = await import("@/lib/agent/workflow-analyzer");
 
-        // Truncate each step result to fit within LLM context
-        const stepsForLLM = (body.steps as Array<Record<string, unknown>>).map((s) => {
-          const result = s.result ? JSON.stringify(s.result) : null;
-          return {
-            name: s.name,
-            tool: s.tool,
-            status: s.status,
-            summary: s.summary || "",
-            data: result ? result.substring(0, 3000) : null,
-            error: s.error || null,
-          };
-        });
+        const stepsData = (body.steps as Array<Record<string, unknown>>).map((s) => ({
+          name: String(s.name ?? ""),
+          tool: String(s.tool ?? ""),
+          status: String(s.status ?? ""),
+          summary: s.summary ? String(s.summary) : undefined,
+          result: s.result,
+          error: s.error ? String(s.error) : undefined,
+        }));
 
-        const systemPrompt = `You are an expert security analyst. You just ran a security workflow called "${body.workflowName}" that executed multiple steps against a Microsoft 365 / Azure tenant. Analyze ALL the step results together and produce a comprehensive security assessment.
+        const skippedData = ((body.skippedSteps ?? []) as Array<Record<string, unknown>>).map((s) => ({
+          stepName: String(s.stepName ?? ""),
+          reason: String(s.reason ?? ""),
+        }));
 
-Your analysis must include:
-
-## 🎯 Executive Verdict
-One paragraph: overall risk level (Critical/High/Medium/Low), the single most important finding, and whether immediate action is required.
-
-## 🔗 Cross-Step Correlations
-Look across ALL step results for connected signals. Examples:
-- Same user appearing in alerts AND risky sign-ins → likely compromised
-- Admin without MFA AND signing in from unusual location → critical
-- Non-compliant device AND DLP violations from same user → insider risk
-- Low secure score AND open management ports → attack surface
-If no correlations exist, say so honestly.
-
-## 📊 Risk Score: X/100
-Calculate a risk score (0=perfect, 100=critical breach) using these weights:
-- Critical/high alerts: +15 each (max 40)
-- Admins without MFA: +20 each (max 40)
-- Risky users flagged: +10 each (max 30)
-- Non-compliant devices: +2 each (max 20)
-- DLP violations: +5 each (max 20)
-- Low secure score (<50%): +15
-- Open management ports: +10 each (max 20)
-Clamp to 0-100.
-
-## 🔧 Remediation Plan
-For each finding, provide:
-1. **What to fix** — specific issue
-2. **Priority** — Critical/High/Medium/Low
-3. **Script** — exact Azure CLI or PowerShell command to remediate
-4. **Verification** — command to verify the fix worked
-
-Group by priority. Use real commands, not pseudocode. Examples:
-- Disable stale account: \`az ad user update --id user@domain.com --account-enabled false\`
-- Enforce MFA: \`az rest --method POST --url "https://graph.microsoft.com/v1.0/policies/authenticationMethodsPolicy"...\`
-- Block port: \`az network nsg rule update --name AllowRDP --nsg-name myNsg --resource-group myRg --access Deny\`
-
-## ⏭️ Recommended Next Steps
-What workflows or investigations should run next based on these findings? Be specific.
-
-Important rules:
-- Only cite data that actually appears in the step results — never hallucinate findings
-- If a step returned empty data or errors, note it as "insufficient data" not "no issues"
-- Be concrete and actionable, not generic advice`;
-
-        const userMessage = `Here are the results from the "${body.workflowName}" workflow:\n\n${stepsForLLM.map((s, i) =>
-          `### Step ${i + 1}: ${s.name} (${s.tool})\nStatus: ${s.status}\n${s.summary ? `Summary: ${s.summary}\n` : ""}${s.data ? `Data:\n\`\`\`json\n${s.data}\n\`\`\`` : s.error ? `Error: ${s.error}` : "No data returned"}`
-        ).join("\n\n")}${body.skippedSteps ? `\n\n### Skipped Steps\n${(body.skippedSteps as Array<Record<string, unknown>>).map((s) => `- ${s.stepName}: ${s.reason}`).join("\n")}` : ""}`;
-
-        const result = await chatCompletion(
-          [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: userMessage },
-          ],
-          undefined,
-          3000
+        const result = await analyzeWorkflow(
+          String(body.workflowName),
+          stepsData,
+          skippedData,
+          tenantId,
+          userToken
         );
 
-        return NextResponse.json({
-          analysis: result.message.content,
-          model: "gpt-4o-mini",
-          tokensUsed: result.finishReason,
-        });
+        return NextResponse.json(result);
       }
 
       case "save": {

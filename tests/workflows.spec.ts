@@ -265,6 +265,74 @@ test.describe("Workflow Catalog", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Test: AI Analysis
+// ---------------------------------------------------------------------------
+
+test.describe("AI Workflow Analysis", () => {
+  test("should run a workflow and produce AI analysis with remediation scripts", async ({ page }) => {
+    // Run a workflow via API
+    const plan = await apiCall(page, "prepare", { workflowId: "privileged-access-review" });
+    const steps = plan.steps ?? [];
+    console.log(`\n  Running privileged-access-review: ${steps.length} steps`);
+
+    // Execute all steps
+    const results: Array<Record<string, unknown>> = [];
+    for (const step of steps) {
+      const params = { ...(step.resolvedParams ?? step.params ?? {}) };
+      delete params.__dynamicParams;
+      const result = await executeStep(page, step.tool, params);
+      results.push({
+        name: step.name,
+        tool: step.tool,
+        status: result.ok ? "success" : "error",
+        summary: result.ok ? summarizeResult(step.tool, result.data) : `Error: ${result.error}`,
+        result: result.data,
+        error: result.error,
+      });
+      console.log(`  ${result.ok ? "✅" : "❌"} ${step.name} (${(result.durationMs / 1000).toFixed(1)}s)`);
+    }
+
+    // Call AI analysis
+    console.log("  🧠 Running AI analysis...");
+    const analysis = await apiCall(page, "analyze", {
+      workflowName: "Privileged Access Review",
+      steps: results,
+      skippedSteps: plan.skippedSteps ?? [],
+    });
+
+    expect(analysis.analysis).toBeTruthy();
+    expect(analysis.analysis.length).toBeGreaterThan(200);
+
+    // Check analysis contains expected sections
+    const text = analysis.analysis as string;
+    const hasVerdict = text.includes("Verdict") || text.includes("verdict");
+    const hasRiskScore = text.includes("Risk Score") || text.includes("/100");
+    const hasRemediation = text.includes("Remediation") || text.includes("remediation") || text.includes("Fix");
+    const hasScripts = text.includes("az ") || text.includes("Connect-MgGraph");
+
+    console.log(`  Analysis length: ${text.length} chars`);
+    console.log(`  Has verdict: ${hasVerdict ? "✅" : "❌"}`);
+    console.log(`  Has risk score: ${hasRiskScore ? "✅" : "❌"}`);
+    console.log(`  Has remediation: ${hasRemediation ? "✅" : "❌"}`);
+    console.log(`  Has real scripts: ${hasScripts ? "✅" : "❌"}`);
+
+    if (analysis.toolCallsMade?.length) {
+      console.log(`  AI made ${analysis.toolCallsMade.length} additional tool calls:`);
+      for (const tc of analysis.toolCallsMade) {
+        console.log(`    → ${tc}`);
+      }
+    }
+
+    expect(hasVerdict).toBeTruthy();
+    expect(hasRemediation).toBeTruthy();
+
+    // Log first 500 chars of analysis for test report
+    console.log(`\n  ─── Analysis Preview ───`);
+    console.log(`  ${text.substring(0, 500)}...`);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Test: NL Workflow Creator
 // ---------------------------------------------------------------------------
 

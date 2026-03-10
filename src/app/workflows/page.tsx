@@ -1,8 +1,10 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense, lazy } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ResultRenderer } from "./result-renderer";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -680,37 +682,96 @@ function ExecutionPanel({
         </div>
       ) : null}
 
-      {/* Results summary after completion */}
+      {/* AI Analysis + Results after completion */}
       {allDone ? (
-        <div className="p-5 border-t border-gray-100 dark:border-gray-800 bg-indigo-50 dark:bg-indigo-950/30">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">📊 Results Summary</h3>
-          <div className="space-y-2">
-            {steps.filter(s => s.status === "success" && s.result).map((step) => (
-              <details key={step.id} className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 group">
-                <summary className="flex items-center justify-between p-3 cursor-pointer select-none hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg">
-                  <div className="flex items-center gap-2">
-                    <span className="group-open:rotate-90 transition-transform inline-block text-gray-400">▶</span>
-                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{step.name}</span>
-                    <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">{summarize(step.tool, step.result)}</span>
-                  </div>
-                  <code className="text-[11px] bg-gray-100 dark:bg-gray-800 rounded px-1.5 py-0.5 text-indigo-600 dark:text-indigo-400">
-                    {step.tool}
-                  </code>
-                </summary>
-                <div className="px-4 pb-4">
-                  <ResultRenderer toolName={step.tool} data={step.result} />
+        <div className="border-t border-gray-100 dark:border-gray-800">
+          {/* AI Analysis */}
+          <div className="p-5 bg-gradient-to-r from-purple-50 via-indigo-50 to-blue-50 dark:from-purple-950/30 dark:via-indigo-950/30 dark:to-blue-950/30">
+            {!analysis && !analyzing ? (
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">🧠 AI Security Analysis</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">Correlate findings, calculate risk score, generate remediation scripts with Microsoft Learn references</p>
                 </div>
-              </details>
-            ))}
+                <button
+                  onClick={async () => {
+                    setAnalyzing(true);
+                    setAnalysisError("");
+                    try {
+                      const stepsData = steps.map((s) => ({
+                        name: s.name, tool: s.tool, status: s.status,
+                        summary: s.result ? summarize(s.tool, s.result) : "",
+                        result: s.result, error: s.error,
+                      }));
+                      const res = (await api("analyze", {
+                        workflowName: plan.workflowName, steps: stepsData, skippedSteps: plan.skippedSteps,
+                      })) as Record<string, unknown>;
+                      if (res.error) setAnalysisError(String(res.error));
+                      else setAnalysis((res.analysis as string) ?? "No analysis returned");
+                    } catch (err: unknown) {
+                      setAnalysisError(err instanceof Error ? err.message : String(err));
+                    } finally { setAnalyzing(false); }
+                  }}
+                  className="inline-flex items-center gap-2 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 px-5 py-2.5 text-sm font-semibold text-white shadow-sm transition-all"
+                >🧠 Analyze with AI</button>
+              </div>
+            ) : null}
+            {analyzing ? (
+              <div className="flex items-center gap-3 py-4">
+                <div className="animate-spin w-5 h-5 border-2 border-purple-500 border-t-transparent rounded-full" />
+                <div>
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">Analyzing findings with AI...</p>
+                  <p className="text-xs text-gray-500">Cross-correlating data, calculating risk, generating remediation scripts</p>
+                </div>
+              </div>
+            ) : null}
+            {analysisError ? (
+              <div className="rounded-lg bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 p-3 text-sm text-red-700 dark:text-red-300 mt-2">⚠ {analysisError}</div>
+            ) : null}
+            {analysis ? (
+              <div className="mt-3">
+                <div className="prose prose-sm dark:prose-invert max-w-none prose-h2:text-base prose-h2:font-semibold prose-h2:mt-5 prose-h2:mb-2 prose-h3:text-sm prose-h3:font-semibold prose-code:text-indigo-600 dark:prose-code:text-indigo-400 prose-code:bg-gray-100 dark:prose-code:bg-gray-800 prose-code:px-1 prose-code:py-0.5 prose-code:rounded prose-code:text-xs prose-code:before:content-none prose-code:after:content-none prose-pre:bg-gray-900 dark:prose-pre:bg-gray-950 prose-pre:text-gray-100 prose-a:text-indigo-600 dark:prose-a:text-indigo-400">
+                  <ReactMarkdown remarkPlugins={[remarkGfm]}>{analysis}</ReactMarkdown>
+                </div>
+                <div className="flex gap-2 mt-4">
+                  <button onClick={() => { const full = buildReport() + "\n\n---\n\n# 🧠 AI Analysis\n\n" + analysis; navigator.clipboard.writeText(full); setCopied(true); setTimeout(() => setCopied(false), 2000); }}
+                    className="rounded-lg bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-medium text-white transition-colors">
+                    {copied ? "✓ Copied!" : "📋 Copy Report + Analysis"}
+                  </button>
+                  <button onClick={() => { const full = buildReport() + "\n\n---\n\n# 🧠 AI Analysis\n\n" + analysis; const blob = new Blob([full], { type: "text/markdown" }); const url = URL.createObjectURL(blob); const a = document.createElement("a"); a.href = url; a.download = `${plan.workflowId}-analysis-${new Date().toISOString().slice(0, 10)}.md`; a.click(); URL.revokeObjectURL(url); }}
+                    className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-medium text-white transition-colors">
+                    ⬇ Download Full Report
+                  </button>
+                  <button onClick={() => { setAnalysis(null); setAnalysisError(""); }}
+                    className="rounded-lg border border-gray-300 dark:border-gray-600 px-4 py-2 text-sm font-medium text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
+                    🔄 Re-analyze
+                  </button>
+                </div>
+              </div>
+            ) : null}
           </div>
-          <div className="flex gap-2 mt-4">
-            <button onClick={handleCopy} className="rounded-lg bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-medium text-white transition-colors">
-              {copied ? "✓ Copied!" : "📋 Copy Full Report"}
-            </button>
-            <button onClick={handleDownload} className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-medium text-white transition-colors">
-              ⬇ Download as Markdown
-            </button>
-          </div>
+
+          {/* Collapsible step results */}
+          <details className="border-t border-gray-100 dark:border-gray-800">
+            <summary className="p-5 cursor-pointer select-none text-sm font-semibold text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+              📊 Step Results ({completedCount} steps)
+            </summary>
+            <div className="px-5 pb-5 space-y-2">
+              {steps.filter(s => s.status === "success" && s.result).map((step) => (
+                <details key={step.id} className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 group">
+                  <summary className="flex items-center justify-between p-3 cursor-pointer select-none hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg">
+                    <div className="flex items-center gap-2">
+                      <span className="group-open:rotate-90 transition-transform inline-block text-gray-400">▶</span>
+                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{step.name}</span>
+                      <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">{summarize(step.tool, step.result)}</span>
+                    </div>
+                    <code className="text-[11px] bg-gray-100 dark:bg-gray-800 rounded px-1.5 py-0.5 text-indigo-600 dark:text-indigo-400">{step.tool}</code>
+                  </summary>
+                  <div className="px-4 pb-4"><ResultRenderer toolName={step.tool} data={step.result} /></div>
+                </details>
+              ))}
+            </div>
+          </details>
         </div>
       ) : null}
     </div>
