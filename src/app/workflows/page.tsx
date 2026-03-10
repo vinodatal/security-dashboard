@@ -996,11 +996,26 @@ function WorkflowsContent() {
           : { workflowId: workflow.id };
 
         const raw = (await api("generate", genArgs)) as Record<string, unknown>;
+
+        // Check for error response from MCP
+        if (raw.error) {
+          setPlanError(String(raw.error) + (raw.hint ? `\n${String(raw.hint)}` : ""));
+          return;
+        }
+
+        const steps = (raw.steps as ExecutionStep[]) ?? [];
+        if (steps.length === 0 && !((raw.skippedSteps as unknown[])?.length)) {
+          setPlanError(
+            "Workflow generated 0 steps. Go to the Dashboard and click \"Assess Environment\" first, then try again."
+          );
+          return;
+        }
+
         const plan: ExecutionPlan = {
           executionId: (raw.executionId as string) ?? "",
           workflowId: (raw.workflowId as string) ?? workflow.id,
           workflowName: (raw.workflowName as string) ?? workflow.name,
-          steps: ((raw.steps as ExecutionStep[]) ?? []).map((s) => ({
+          steps: steps.map((s) => ({
             ...s,
             status: s.status ?? "pending",
           })),
