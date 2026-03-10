@@ -96,13 +96,19 @@ export default function Home() {
       });
       const appData = await appRes.json();
       setApps(appData.apps ?? []);
-      if (appData.apps?.length > 0) setSelectedApp(appData.apps[0].clientId);
 
       // Check if credentials are already stored server-side
       const adminRes = await fetch("/api/admin");
       const adminData = await adminRes.json();
       const stored = (adminData.tenants ?? []).find((t: any) => t.tenantId === selectedTenant);
       setHasStoredCreds(!!stored);
+
+      // Pre-select the stored app if credentials exist
+      if (stored?.clientId) {
+        setSelectedApp(stored.clientId);
+      } else if (appData.apps?.length > 0) {
+        setSelectedApp(appData.apps[0].clientId);
+      }
 
       setStep("ready");
     } catch (e: any) {
@@ -310,6 +316,9 @@ export default function Home() {
               <div>
                 <label className="block text-sm font-medium text-gray-600 dark:text-gray-300 mb-1">
                   App Registration ({apps.length} found)
+                  {hasStoredCreds ? (
+                    <span className="ml-2 text-xs text-green-600 dark:text-green-400 font-normal">✓ credentials configured</span>
+                  ) : null}
                 </label>
                 {apps.length > 0 ? (
                   <>
