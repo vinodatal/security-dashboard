@@ -138,7 +138,12 @@ export async function POST(req: NextRequest) {
           stepsData,
           skippedData,
           tenantId,
-          userToken
+          userToken,
+          {
+            category: body.workflowCategory ? String(body.workflowCategory) : undefined,
+            tags: Array.isArray(body.workflowTags) ? body.workflowTags.map(String) : undefined,
+            workflowId: body.workflowId ? String(body.workflowId) : undefined,
+          }
         );
 
         return NextResponse.json(result);

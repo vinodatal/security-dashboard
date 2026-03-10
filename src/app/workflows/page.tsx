@@ -363,10 +363,12 @@ function ExecutionPanel({
   plan,
   onBack,
   api,
+  workflowMeta,
 }: {
   plan: ExecutionPlan;
   onBack: () => void;
   api: (action: string, body?: Record<string, unknown>) => Promise<unknown>;
+  workflowMeta?: { category?: string; tags?: string[]; workflowId?: string };
 }) {
   const [steps, setSteps] = useState<ExecutionStep[]>(plan.steps ?? []);
   const [runningAll, setRunningAll] = useState(false);
@@ -705,6 +707,9 @@ function ExecutionPanel({
                       }));
                       const res = (await api("analyze", {
                         workflowName: plan.workflowName, steps: stepsData, skippedSteps: plan.skippedSteps,
+                        workflowCategory: workflowMeta?.category,
+                        workflowTags: workflowMeta?.tags,
+                        workflowId: workflowMeta?.workflowId ?? plan.workflowId,
                       })) as Record<string, unknown>;
                       if (res.error) setAnalysisError(String(res.error));
                       else setAnalysis((res.analysis as string) ?? "No analysis returned");
@@ -1255,6 +1260,10 @@ function WorkflowsContent() {
             plan={activePlan}
             onBack={() => setActivePlan(null)}
             api={api}
+            workflowMeta={(() => {
+              const wf = workflows.find(w => w.id === activePlan.workflowId);
+              return { category: wf?.category, tags: wf?.tags, workflowId: activePlan.workflowId };
+            })()}
           />
         </div>
       </div>

@@ -92,7 +92,8 @@ export async function analyzeWorkflow(
   steps: StepData[],
   skippedSteps: SkippedStep[],
   tenantId: string,
-  userToken?: string
+  userToken?: string,
+  workflowMeta?: { category?: string; tags?: string[]; workflowId?: string }
 ): Promise<AnalysisResult> {
   const toolNames = steps.map((s) => s.tool);
   const remediationContext = getRemediationContext(toolNames);
@@ -109,19 +110,26 @@ export async function analyzeWorkflow(
   }));
   const allSkills = [...BUILT_IN_SKILLS, ...customSkills];
   const selectedSkills = selectRelevantSkills(allSkills, {
+    workflowId: workflowMeta?.workflowId,
     toolNames,
-    tags: steps.flatMap((s) => {
-      const d = s.result as Record<string, unknown> | undefined;
-      if (!d) return [];
+    category: workflowMeta?.category,
+    tags: [
+      ...(workflowMeta?.tags ?? []),
+      // Also extract keywords from workflow name
+      ...workflowName.toLowerCase().split(/\s+/),
       // Extract tags from findings data
-      const tags: string[] = [];
-      if (d.findings && Array.isArray(d.findings)) {
-        for (const f of d.findings as Array<Record<string, unknown>>) {
-          if (f.type) tags.push(String(f.type));
+      ...steps.flatMap((s) => {
+        const d = s.result as Record<string, unknown> | undefined;
+        if (!d) return [];
+        const tags: string[] = [];
+        if (d.findings && Array.isArray(d.findings)) {
+          for (const f of d.findings as Array<Record<string, unknown>>) {
+            if (f.type) tags.push(String(f.type));
+          }
         }
-      }
-      return tags;
-    }),
+        return tags;
+      }),
+    ],
   });
   const skillContext = buildSkillContext(selectedSkills);
 
