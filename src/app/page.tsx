@@ -95,7 +95,7 @@ export default function Home() {
         body: JSON.stringify({ graphToken: data.graphToken, tenantId: selectedTenant }),
       });
       const appData = await appRes.json();
-      setApps(appData.apps ?? []);
+      const allApps = appData.apps ?? [];
 
       // Check if credentials are already stored server-side
       const adminRes = await fetch("/api/admin");
@@ -103,12 +103,25 @@ export default function Home() {
       const stored = (adminData.tenants ?? []).find((t: any) => t.tenantId === selectedTenant);
       setHasStoredCreds(!!stored);
 
-      // Pre-select the stored app if credentials exist
+      // Sort apps: put stored/configured app first
       if (stored?.clientId) {
+        const storedIdx = allApps.findIndex((a: any) => a.clientId === stored.clientId);
+        if (storedIdx > 0) {
+          const [storedApp] = allApps.splice(storedIdx, 1);
+          storedApp.name = `${storedApp.name} ✓ configured`;
+          allApps.unshift(storedApp);
+        } else if (storedIdx === 0) {
+          allApps[0].name = `${allApps[0].name} ✓ configured`;
+        } else {
+          // App not in the list (user can't see it) — add a placeholder
+          allApps.unshift({ clientId: stored.clientId, name: `Configured App ✓`, permissionCount: 0 });
+        }
         setSelectedApp(stored.clientId);
-      } else if (appData.apps?.length > 0) {
-        setSelectedApp(appData.apps[0].clientId);
+      } else if (allApps.length > 0) {
+        setSelectedApp(allApps[0].clientId);
       }
+
+      setApps(allApps);
 
       setStep("ready");
     } catch (e: any) {
