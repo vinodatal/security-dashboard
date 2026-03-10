@@ -263,6 +263,95 @@ test.describe("NL Workflow Creator", () => {
       console.log(`    - ${s.name} → ${s.tool}`);
     }
   });
+
+  test("should save, list, and delete a custom workflow", async ({ page }) => {
+    // Generate
+    const gen = await apiCall(page, "create-from-nl", {
+      description: "List all risky users and check their MFA status",
+    });
+    expect(gen.workflow).toBeDefined();
+    const wf = gen.workflow;
+    wf.id = wf.id || `test-custom-${Date.now()}`;
+
+    // Save
+    const saveResult = await apiCall(page, "save", { workflow: wf });
+    expect(saveResult.saved).toBeTruthy();
+    console.log(`\n  Saved custom workflow: ${wf.id}`);
+
+    // List
+    const listResult = await apiCall(page, "list-custom");
+    expect(listResult.count).toBeGreaterThanOrEqual(1);
+    const found = listResult.workflows.find((w: Record<string, unknown>) => w.workflowId === wf.id);
+    expect(found).toBeTruthy();
+    console.log(`  Listed: ${listResult.count} custom workflows, found ours ✓`);
+
+    // Delete (cleanup)
+    const delResult = await apiCall(page, "delete-custom", { workflowId: wf.id });
+    expect(delResult.deleted).toBeTruthy();
+    console.log(`  Deleted custom workflow: ${wf.id} ✓`);
+
+    // Verify deleted
+    const listAfter = await apiCall(page, "list-custom");
+    const notFound = !(listAfter.workflows ?? []).some((w: Record<string, unknown>) => w.workflowId === wf.id);
+    expect(notFound).toBeTruthy();
+    console.log(`  Verified deletion ✓`);
+  });
+
+  test("should save and run a generated workflow, then save the run", async ({ page }) => {
+    // Generate a simple workflow
+    const gen = await apiCall(page, "create-from-nl", {
+      description: "Get the current secure score and list top improvement actions",
+    });
+    expect(gen.workflow).toBeDefined();
+    const wf = gen.workflow;
+    wf.id = wf.id || `test-run-${Date.now()}`;
+
+    // Save it
+    await apiCall(page, "save", { workflow: wf });
+    console.log(`\n  Saved workflow: ${wf.id}`);
+
+    // Execute each step
+    const steps = wf.steps ?? [];
+    let succeeded = 0;
+    let failed = 0;
+
+    for (const step of steps) {
+      const params = step.params ?? {};
+      try {
+        const result = await executeStep(page, step.tool, params);
+        if (result.ok) succeeded++;
+        else failed++;
+        console.log(`  ${result.ok ? "✅" : "❌"} ${step.name} (${(result.durationMs / 1000).toFixed(1)}s)`);
+      } catch {
+        failed++;
+        console.log(`  ❌ ${step.name} — exception`);
+      }
+    }
+
+    // Save the run
+    const runResult = await apiCall(page, "save-run", {
+      workflowId: wf.id,
+      status: failed === 0 ? "completed" : "partial",
+      mode: "auto",
+      totalSteps: steps.length,
+      completedSteps: succeeded,
+      skippedSteps: 0,
+      failedSteps: failed,
+      findingsCount: 0,
+      triggeredBy: "test",
+    });
+    expect(runResult.saved).toBeTruthy();
+    console.log(`  Run saved: ${succeeded}/${steps.length} steps succeeded`);
+
+    // List runs
+    const runsResult = await apiCall(page, "list-runs", { workflowId: wf.id });
+    expect(runsResult.count).toBeGreaterThanOrEqual(1);
+    console.log(`  Run history: ${runsResult.count} runs recorded ✓`);
+
+    // Cleanup
+    await apiCall(page, "delete-custom", { workflowId: wf.id });
+    console.log(`  Cleaned up workflow: ${wf.id} ✓`);
+  });
 });
 
 // ---------------------------------------------------------------------------
