@@ -77,6 +77,103 @@ interface StepResult {
   durationMs?: number;
 }
 
+/** Extract a human-readable summary line from a tool result */
+function summarizeStepData(toolName: string, data: unknown): string {
+  if (!data || typeof data !== "object") return "No data";
+  const d = data as Record<string, unknown>;
+
+  // Handle error responses
+  if (d.error) return `⚠ ${String(d.error).substring(0, 120)}`;
+
+  // Tool-specific summaries
+  if (d.alertCount !== undefined) return `${d.alertCount} alerts found`;
+  if (d.incidentCount !== undefined) return `${d.incidentCount} incidents found`;
+  if (d.userCount !== undefined) return `${d.userCount} users found`;
+  if (d.deviceCount !== undefined) return `${d.deviceCount} devices found`;
+  if (d.recordCount !== undefined) return `${d.recordCount} records found`;
+  if (d.currentScore !== undefined) return `Score: ${d.currentScore}/${d.maxScore ?? "?"} (${d.percentageScore ?? "?"}%)`;
+  if (d.recommendationCount !== undefined) return `${d.recommendationCount} recommendations`;
+  if (d.findings && Array.isArray(d.findings)) return `${d.findings.length} findings`;
+  if (d.checks && typeof d.checks === "object") {
+    const checks = d.checks as Record<string, unknown>;
+    const keys = Object.keys(checks);
+    return `${keys.length} checks completed`;
+  }
+  if (d.totalRecords !== undefined) return `${d.totalRecords} resources found`;
+  if (d.summary && typeof d.summary === "object") {
+    const s = d.summary as Record<string, unknown>;
+    if (s.total !== undefined) return `${s.total} total — ${s.needsAttention ?? 0} need attention`;
+  }
+  if (d.labelCount !== undefined) return `${d.labelCount} labels, ${d.sitCount ?? 0} sensitive info types`;
+
+  // Generic: count array values
+  const val = d.value ?? d.alerts ?? d.users ?? d.devices ?? d.signIns ?? d.results ?? d.workflows ?? d.packages;
+  if (Array.isArray(val)) return `${val.length} items returned`;
+
+  // Fallback: show keys
+  const keys = Object.keys(d).filter(k => !k.startsWith("_")).slice(0, 4);
+  return keys.map(k => {
+    const v = d[k];
+    if (typeof v === "number") return `${k}: ${v}`;
+    if (typeof v === "string" && v.length < 30) return `${k}: ${v}`;
+    if (Array.isArray(v)) return `${k}: ${v.length} items`;
+    return k;
+  }).join(" · ");
+}
+
+/** Build a markdown report from completed workflow results */
+function buildWorkflowReport(
+  plan: ExecutionPlan,
+  results: Map<string, StepResult>,
+  startTime: number
+): string {
+  const now = new Date();
+  const durationSec = Math.round((Date.now() - startTime) / 1000);
+  const completed = Array.from(results.values()).filter(r => r.status === "success").length;
+  const failed = Array.from(results.values()).filter(r => r.status === "failed").length;
+
+  let md = `# ${plan.workflowName} — Report\n\n`;
+  md += `**Generated:** ${now.toLocaleString()}  \n`;
+  md += `**Duration:** ${durationSec}s  \n`;
+  md += `**Steps:** ${completed} completed, ${failed} failed, ${plan.skippedSteps.length} skipped out of ${plan.steps.length + plan.skippedSteps.length} total\n\n`;
+  md += `---\n\n`;
+
+  // Step results in order
+  for (const step of plan.steps) {
+    const result = results.get(step.id);
+    const icon = result?.status === "success" ? "✅" : result?.status === "failed" ? "❌" : "⬜";
+    md += `## ${icon} ${step.name}\n`;
+    md += `**Tool:** \`${step.tool}\``;
+    if (result?.durationMs) md += ` · **Duration:** ${(result.durationMs / 1000).toFixed(1)}s`;
+    md += `\n\n`;
+
+    if (result?.status === "success" && result.data) {
+      md += `**Summary:** ${summarizeStepData(step.tool, result.data)}\n\n`;
+      // Include key data
+      const d = result.data as Record<string, unknown>;
+      const dataStr = JSON.stringify(d, null, 2);
+      if (dataStr.length < 5000) {
+        md += `<details><summary>Raw data</summary>\n\n\`\`\`json\n${dataStr}\n\`\`\`\n</details>\n\n`;
+      } else {
+        md += `<details><summary>Raw data (truncated)</summary>\n\n\`\`\`json\n${dataStr.substring(0, 5000)}\n...\n\`\`\`\n</details>\n\n`;
+      }
+    } else if (result?.status === "failed") {
+      md += `**Error:** ${result.error ?? "Unknown error"}\n\n`;
+    }
+  }
+
+  // Skipped
+  if (plan.skippedSteps.length > 0) {
+    md += `## ⏭️ Skipped Steps\n\n`;
+    for (const s of plan.skippedSteps) {
+      md += `- **${s.stepName}** — ${s.reason}\n`;
+    }
+    md += `\n`;
+  }
+
+  return md;
+}
+
 const COMPLEXITY_COLORS: Record<string, string> = {
   low: "text-green-400 bg-green-400/10 border-green-400/20",
   medium: "text-yellow-400 bg-yellow-400/10 border-yellow-400/20",
@@ -134,6 +231,8 @@ export function WorkflowPanel() {
   const [showCatalog, setShowCatalog] = useState(false);
   const [catalog, setCatalog] = useState<unknown>(null);
   const [error, setError] = useState<string | null>(null);
+  const [workflowStartTime, setWorkflowStartTime] = useState(0);
+  const [copied, setCopied] = useState(false);
 
   const api = useCallback(async (action: string, body: Record<string, unknown> = {}) => {
     const res = await fetch("/api/workflows", {
@@ -169,6 +268,8 @@ export function WorkflowPanel() {
     setGenerating(true);
     setError(null);
     setStepResults(new Map());
+    setWorkflowStartTime(Date.now());
+    setCopied(false);
     try {
       const result = await api("generate", { workflowId, context });
       setPlan(result);
@@ -272,7 +373,26 @@ export function WorkflowPanel() {
   if (plan) {
     const completedCount = Array.from(stepResults.values()).filter(r => r.status === "success").length;
     const failedCount = Array.from(stepResults.values()).filter(r => r.status === "failed").length;
+    const allDone = completedCount + failedCount === plan.steps.length;
     const progress = plan.steps.length > 0 ? Math.round(((completedCount + failedCount) / plan.steps.length) * 100) : 0;
+
+    const handleCopyReport = () => {
+      const md = buildWorkflowReport(plan, stepResults, workflowStartTime);
+      navigator.clipboard.writeText(md);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    };
+
+    const handleDownloadReport = () => {
+      const md = buildWorkflowReport(plan, stepResults, workflowStartTime);
+      const blob = new Blob([md], { type: "text/markdown" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${plan.workflowId}-report-${new Date().toISOString().slice(0, 10)}.md`;
+      a.click();
+      URL.revokeObjectURL(url);
+    };
 
     return (
       <div className="bg-gradient-to-r from-indigo-950/50 via-purple-950/50 to-indigo-950/50 rounded-2xl border border-indigo-500/20 p-6 space-y-4">
@@ -282,19 +402,37 @@ export function WorkflowPanel() {
             <h2 className="text-lg font-bold text-white">▶ {plan.workflowName}</h2>
             <p className="text-gray-400 text-sm">
               {completedCount}/{plan.steps.length} steps completed
-              {plan.skippedSteps.length > 0 && ` · ${plan.skippedSteps.length} skipped`}
-              {failedCount > 0 && ` · ${failedCount} failed`}
+              {plan.skippedSteps.length > 0 ? ` · ${plan.skippedSteps.length} skipped` : ""}
+              {failedCount > 0 ? ` · ${failedCount} failed` : ""}
               {` · ${plan.estimatedDuration}`}
             </p>
           </div>
           <div className="flex gap-2">
-            <button
-              onClick={handleExecuteAll}
-              disabled={!!executingStep || completedCount === plan.steps.length}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors"
-            >
-              ▶ Run All Steps
-            </button>
+            {!allDone ? (
+              <button
+                onClick={handleExecuteAll}
+                disabled={!!executingStep}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-gray-700 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                ▶ Run All Steps
+              </button>
+            ) : null}
+            {completedCount > 0 ? (
+              <>
+                <button
+                  onClick={handleCopyReport}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium transition-colors"
+                >
+                  {copied ? "✓ Copied!" : "📋 Copy Report"}
+                </button>
+                <button
+                  onClick={handleDownloadReport}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-medium transition-colors"
+                >
+                  ⬇ Download .md
+                </button>
+              </>
+            ) : null}
             <button
               onClick={() => { setPlan(null); setStepResults(new Map()); }}
               className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-lg text-sm font-medium transition-colors"
@@ -365,12 +503,15 @@ export function WorkflowPanel() {
                   </div>
                 </div>
                 {isDone && result.data ? (
-                  <details className="mt-2">
-                    <summary className="text-xs text-indigo-400 cursor-pointer hover:text-indigo-300">View result</summary>
-                    <pre className="mt-1 text-xs text-gray-400 bg-black/30 rounded p-2 overflow-x-auto max-h-40 overflow-y-auto">
-                      {JSON.stringify(result.data as Record<string, unknown>, null, 2).substring(0, 2000)}
-                    </pre>
-                  </details>
+                  <div className="mt-2">
+                    <p className="text-xs text-emerald-400 font-medium">{summarizeStepData(step.tool, result.data)}</p>
+                    <details className="mt-1">
+                      <summary className="text-xs text-indigo-400 cursor-pointer hover:text-indigo-300">View raw data</summary>
+                      <pre className="mt-1 text-xs text-gray-400 bg-black/30 rounded p-2 overflow-x-auto max-h-48 overflow-y-auto">
+                        {JSON.stringify(result.data as Record<string, unknown>, null, 2)}
+                      </pre>
+                    </details>
+                  </div>
                 ) : null}
                 {isFailed && result.error ? (
                   <p className="mt-1 text-xs text-red-400">{String(result.error)}</p>
@@ -397,6 +538,39 @@ export function WorkflowPanel() {
             </details>
           ) : null}
         </div>
+
+        {/* Summary after all steps complete */}
+        {allDone ? (
+          <div className="border-t border-indigo-500/20 pt-4 space-y-3">
+            <h3 className="text-sm font-semibold text-white">📊 Results Summary</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+              {plan.steps.map((step) => {
+                const result = stepResults.get(step.id);
+                if (result?.status !== "success" || !result.data) return null;
+                return (
+                  <div key={step.id} className="bg-gray-900/60 rounded-lg p-3 border border-gray-700/30">
+                    <p className="text-xs text-gray-400 mb-1">{step.name}</p>
+                    <p className="text-sm text-white font-medium">{summarizeStepData(step.tool, result.data)}</p>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex gap-2 pt-2">
+              <button
+                onClick={handleCopyReport}
+                className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                {copied ? "✓ Copied to clipboard!" : "📋 Copy Full Report"}
+              </button>
+              <button
+                onClick={handleDownloadReport}
+                className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-lg text-sm font-medium transition-colors"
+              >
+                ⬇ Download as Markdown
+              </button>
+            </div>
+          </div>
+        ) : null}
 
         {error ? <p className="text-red-400 text-sm">{error}</p> : null}
       </div>
