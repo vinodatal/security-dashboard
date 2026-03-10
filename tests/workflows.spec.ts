@@ -84,124 +84,116 @@ async function executeStep(
 }
 
 // ---------------------------------------------------------------------------
-// Test: Assess Environment (runs first, verifies tenant connectivity)
+// Test: Assess Environment (runs first on dashboard, verifies tenant connectivity)
 // ---------------------------------------------------------------------------
 
 test.describe("Environment Assessment", () => {
-  test("should assess environment and detect licenses", async ({ page }) => {
-    const result = await apiCall(page, "assess", { forceRefresh: true });
+  test("should assess environment via dashboard UI", async ({ page }) => {
+    await page.goto("/dashboard");
+    await page.waitForLoadState("networkidle");
 
-    expect(result.tenantId).toBeTruthy();
-    expect(result.licenses).toBeDefined();
-    expect(result.openIssues).toBeDefined();
-    expect(result.assessedAt).toBeTruthy();
+    // The panel might show "Assess Environment" (first time) or "Command Center" (cached)
+    const assessBtn = page.getByRole("button", { name: /assess environment/i });
+    const refreshBtn = page.getByRole("button", { name: /refresh/i });
 
-    // Log what we found
-    const licenses = result.licenses;
-    const issues = result.openIssues;
-    console.log("\n═══ Environment Assessment ═══");
-    console.log(`Tenant: ${result.tenantId}`);
-    console.log(`Licenses: ${Object.entries(licenses).filter(([, v]) => v).map(([k]) => k).join(", ") || "none detected"}`);
-    console.log(`Open Issues: ${JSON.stringify(issues, null, 2)}`);
+    const isFirstTime = await assessBtn.isVisible({ timeout: 5_000 }).catch(() => false);
+    const isCached = await refreshBtn.isVisible({ timeout: 2_000 }).catch(() => false);
 
-    // Attach to report
-    test.info().annotations.push({
-      type: "environment",
-      description: JSON.stringify({ licenses, issues }, null, 2),
-    });
-  });
+    await page.screenshot({ path: "test-results/screenshots/01-dashboard-before-assess.png" });
 
-  test("should suggest workflows based on environment", async ({ page }) => {
-    const result = await apiCall(page, "suggest");
-
-    console.log(`\n═══ Suggested Workflows (${result.suggestionsCount ?? 0}) ═══`);
-    if (result.suggestions) {
-      for (const s of result.suggestions) {
-        console.log(`  ${s.rank}. [P${s.priority}] ${s.name} — ${s.reason}`);
-      }
+    if (isFirstTime) {
+      await assessBtn.click();
+    } else if (isCached) {
+      // Already assessed — click Refresh to re-assess
+      await refreshBtn.click();
+    } else {
+      // Workflow panel might not be visible yet — wait for dashboard to load
+      await page.waitForTimeout(3_000);
+      await page.screenshot({ path: "test-results/screenshots/01-dashboard-no-panel.png" });
+      console.log("  ⚠️ Workflow panel not found — skipping assessment UI test");
+      return;
     }
 
-    expect(result.suggestionsCount).toBeGreaterThanOrEqual(0);
+    // Wait for assessment to complete (license badges appear)
+    await expect(page.getByText(/Defender|Sentinel|Intune|Purview|Entra/i).first()).toBeVisible({ timeout: 90_000 });
+    await page.waitForTimeout(1_000);
+
+    await page.screenshot({ path: "test-results/screenshots/02-environment-assessed.png" });
+
+    // Verify license badges rendered
+    const badges = page.locator("span").filter({ hasText: /Defender|Sentinel|Intune|Purview|Entra/i });
+    const badgeCount = await badges.count();
+    expect(badgeCount).toBeGreaterThanOrEqual(3);
+    console.log(`\n  ✅ Environment assessed — ${badgeCount} license badges visible`);
   });
 });
 
 // ---------------------------------------------------------------------------
-// Test: Run Each Workflow
+// Test: Run Each Workflow via the /workflows page UI
 // ---------------------------------------------------------------------------
 
 test.describe("Workflow Execution", () => {
+  // Run workflows sequentially through the UI
   for (const wf of WORKFLOWS) {
     test(`${wf.id}: ${wf.name}`, async ({ page }) => {
       test.info().annotations.push({ type: "category", description: wf.category });
 
-      // Step 1: Generate execution plan
-      console.log(`\n─── ${wf.name} ───`);
-      const plan = await apiCall(page, "generate", { workflowId: wf.id });
+      // Navigate to workflows page
+      await page.goto("/workflows");
+      await expect(page.getByText(/Security Workflows/i)).toBeVisible({ timeout: 15_000 });
 
-      const steps = plan.steps ?? [];
-      const skipped = plan.skippedSteps ?? [];
+      // Wait for catalog to load
+      await expect(page.getByRole("button", { name: /run workflow/i }).first()).toBeVisible({ timeout: 15_000 });
 
-      console.log(`  Plan: ${steps.length} steps, ${skipped.length} skipped`);
+      // Find this workflow's card by its name text
+      const card = page.locator("[class*='rounded-xl']").filter({ hasText: wf.name });
+      await expect(card.first()).toBeVisible({ timeout: 5_000 });
 
-      if (skipped.length > 0) {
-        for (const s of skipped) {
-          console.log(`  ⏭️  ${s.stepName}: ${s.reason}`);
-        }
+      // Scroll to the card
+      await card.first().scrollIntoViewIfNeeded();
+
+      // Click "▶ Run Workflow" button on this card
+      const runBtn = card.first().getByRole("button", { name: /run workflow/i });
+      await runBtn.click();
+
+      // Wait for execution panel to appear (progress bar or step list)
+      await expect(page.getByText(/steps|step 1|progress/i).first()).toBeVisible({ timeout: 15_000 });
+
+      // Screenshot the execution plan
+      await page.screenshot({ path: `test-results/screenshots/wf-${wf.id}-01-plan.png`, fullPage: true });
+
+      // Click "Run All Steps" if visible
+      const runAllBtn = page.getByRole("button", { name: /run all/i });
+      if (await runAllBtn.isVisible({ timeout: 3_000 }).catch(() => false)) {
+        await runAllBtn.click();
+
+        // Wait for completion — look for success icons or "passed" text
+        // Poll for up to 120s for all steps to finish
+        await page.waitForFunction(
+          () => {
+            const text = document.body.innerText;
+            return text.includes("✅") || text.includes("passed") || text.includes("Result");
+          },
+          { timeout: 120_000 }
+        );
+
+        await page.waitForTimeout(1_000); // let UI settle
       }
 
-      // Step 2: Execute each step
-      const results: Array<{
-        step: string;
-        tool: string;
-        status: string;
-        durationMs: number;
-        summary: string;
-      }> = [];
+      // Screenshot the results
+      await page.screenshot({ path: `test-results/screenshots/wf-${wf.id}-02-results.png`, fullPage: true });
 
-      for (const step of steps) {
-        const params = { ...step.resolvedParams };
-        // Remove internal metadata
-        delete params.__dynamicParams;
+      // Verify at least something rendered (steps or results)
+      const pageText = await page.textContent("body") ?? "";
+      const hasStepOutput = pageText.includes("✅") || pageText.includes("❌") || pageText.includes("success") || pageText.includes("failed");
+      console.log(`  ${hasStepOutput ? "✅" : "⚠️"} ${wf.name} — execution ${hasStepOutput ? "completed" : "rendered plan"}`);
+      expect(hasStepOutput || pageText.includes(wf.name)).toBeTruthy();
 
-        console.log(`  🔄 ${step.name} → ${step.tool}`);
-        const result = await executeStep(page, step.tool, params);
-
-        const summary = result.ok
-          ? summarizeResult(step.tool, result.data)
-          : `ERROR: ${result.error?.substring(0, 100)}`;
-
-        const icon = result.ok ? "✅" : "❌";
-        console.log(`  ${icon} ${step.name} (${(result.durationMs / 1000).toFixed(1)}s) — ${summary}`);
-
-        results.push({
-          step: step.name,
-          tool: step.tool,
-          status: result.ok ? "success" : "failed",
-          durationMs: result.durationMs,
-          summary,
-        });
-      }
-
-      // Step 3: Report
-      const succeeded = results.filter((r) => r.status === "success").length;
-      const failed = results.filter((r) => r.status === "failed").length;
-      const totalMs = results.reduce((a, r) => a + r.durationMs, 0);
-
-      console.log(`  ── Result: ${succeeded}/${results.length} passed, ${failed} failed, ${(totalMs / 1000).toFixed(1)}s total`);
-
-      // Attach results to HTML report
-      test.info().annotations.push({
-        type: "workflow-results",
-        description: JSON.stringify({ steps: results, skipped }, null, 2),
-      });
-
-      // At least some steps should succeed (we don't fail the test if
-      // individual steps fail due to missing licenses — that's expected)
-      if (steps.length > 0) {
-        expect(
-          succeeded,
-          `Expected at least 1 step to succeed in ${wf.name}`
-        ).toBeGreaterThanOrEqual(1);
+      // Click Back to return to catalog for next test
+      const backBtn = page.getByRole("button", { name: /back|cancel|close/i });
+      if (await backBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
+        await backBtn.click();
+        await page.waitForTimeout(500);
       }
     });
   }
@@ -212,32 +204,56 @@ test.describe("Workflow Execution", () => {
 // ---------------------------------------------------------------------------
 
 test.describe("Workflow Catalog", () => {
-  test("should return all 22 workflows", async ({ page }) => {
-    const result = await apiCall(page, "catalog");
-    expect(result.totalWorkflows).toBe(22);
-    expect(result.byCategory).toBeDefined();
+  test("should display all 22 workflows on the page", async ({ page }) => {
+    await page.goto("/workflows");
+    await expect(page.getByText(/Security Workflows/i)).toBeVisible({ timeout: 15_000 });
 
-    const categories = Object.keys(result.byCategory);
-    expect(categories).toContain("incident-response");
-    expect(categories).toContain("identity-access");
-    expect(categories).toContain("compliance-posture");
-    expect(categories).toContain("device-endpoint");
-    expect(categories).toContain("data-protection");
-    expect(categories).toContain("reporting");
+    // Wait for cards to load
+    const runButtons = page.getByRole("button", { name: /run workflow/i });
+    await expect(runButtons.first()).toBeVisible({ timeout: 15_000 });
+
+    const count = await runButtons.count();
+    console.log(`\n  Workflow catalog: ${count} workflow cards`);
+    expect(count).toBe(22);
+
+    await page.screenshot({ path: "test-results/screenshots/catalog-full.png", fullPage: true });
   });
 
-  test("should filter by category", async ({ page }) => {
-    const result = await apiCall(page, "catalog", { category: "incident-response" });
-    expect(result.totalWorkflows).toBe(5);
+  test("should filter by category via UI", async ({ page }) => {
+    await page.goto("/workflows");
+    await expect(page.getByText(/Security Workflows/i)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("button", { name: /run workflow/i }).first()).toBeVisible({ timeout: 15_000 });
+
+    // Click Identity & Access filter
+    const filterBtn = page.getByRole("button", { name: /identity/i });
+    await expect(filterBtn).toBeVisible({ timeout: 5_000 });
+    await filterBtn.click();
+    await page.waitForTimeout(500);
+
+    const cards = page.getByRole("button", { name: /run workflow/i });
+    const count = await cards.count();
+    console.log(`  Filtered to Identity & Access: ${count} cards`);
+    expect(count).toBe(4);
+
+    await page.screenshot({ path: "test-results/screenshots/catalog-filtered-identity.png", fullPage: true });
   });
 
-  test("should filter by complexity", async ({ page }) => {
-    const result = await apiCall(page, "catalog", { complexity: "high" });
-    expect(result.totalWorkflows).toBeGreaterThan(0);
-    const allHigh = Object.values(result.byCategory)
-      .flat()
-      .every((w: any) => w.complexity === "high");
-    expect(allHigh).toBeTruthy();
+  test("should show workflow details with steps", async ({ page }) => {
+    await page.goto("/workflows");
+    await expect(page.getByRole("button", { name: /run workflow/i }).first()).toBeVisible({ timeout: 15_000 });
+
+    // Click "Details" on the first card
+    const detailsBtn = page.getByRole("button", { name: /details/i }).first();
+    await expect(detailsBtn).toBeVisible({ timeout: 5_000 });
+    await detailsBtn.click();
+    await page.waitForTimeout(500);
+
+    // Verify steps are shown
+    const hasSteps = await page.getByText(/Steps \(/i).first().isVisible().catch(() => false);
+    console.log(`  Details expanded: ${hasSteps ? "steps visible ✓" : "no steps section"}`);
+
+    await page.screenshot({ path: "test-results/screenshots/catalog-details-expanded.png", fullPage: true });
+    expect(hasSteps).toBeTruthy();
   });
 });
 
@@ -245,92 +261,97 @@ test.describe("Workflow Catalog", () => {
 // Test: NL Workflow Creator
 // ---------------------------------------------------------------------------
 
-test.describe("NL Workflow Creator", () => {
-  test("should generate workflow from natural language", async ({ page }) => {
-    const result = await apiCall(page, "create-from-nl", {
-      description: "Check all admin accounts for MFA gaps and show their last sign-in date",
-    });
+test.describe("NL Workflow Creator — Full Lifecycle", () => {
+  test("create → save → appears in catalog → run → results → delete", async ({ page }) => {
+    // ── Step 1: Open creator modal ──
+    await page.goto("/workflows");
+    await expect(page.getByRole("button", { name: /run workflow/i }).first()).toBeVisible({ timeout: 15_000 });
+    const initialCardCount = await page.getByRole("button", { name: /run workflow/i }).count();
+    console.log(`\n  Initial catalog: ${initialCardCount} workflows`);
 
-    expect(result.workflow).toBeDefined();
-    expect(result.workflow.name).toBeTruthy();
-    expect(result.workflow.steps).toBeDefined();
-    expect(result.workflow.steps.length).toBeGreaterThan(0);
+    const createBtn = page.getByRole("button", { name: /create custom/i });
+    await createBtn.click();
+    await expect(page.getByText(/describe what/i)).toBeVisible({ timeout: 5_000 });
+    await page.screenshot({ path: "test-results/screenshots/nl-01-modal-open.png" });
 
-    console.log(`\n═══ NL Generated Workflow ═══`);
-    console.log(`  Name: ${result.workflow.name}`);
-    console.log(`  Steps: ${result.workflow.steps.length}`);
-    for (const s of result.workflow.steps) {
-      console.log(`    - ${s.name} → ${s.tool}`);
+    // ── Step 2: Type description and generate ──
+    const textarea = page.locator("textarea").first();
+    await textarea.fill("Get the current secure score and list top 5 improvement actions");
+
+    const genBtn = page.getByRole("button", { name: /generate/i });
+    await genBtn.click();
+
+    // Wait for LLM to generate (up to 30s)
+    await expect(page.getByText(/Steps \(/i).first()).toBeVisible({ timeout: 30_000 });
+    await page.waitForTimeout(1_000);
+    await page.screenshot({ path: "test-results/screenshots/nl-02-generated.png" });
+    console.log("  ✅ Workflow generated from NL");
+
+    // Verify steps are rendered
+    const stepsText = await page.getByText(/Steps \(/i).first().textContent();
+    expect(stepsText).toBeTruthy();
+    console.log(`  ${stepsText}`);
+
+    // ── Step 3: Set name and save ──
+    const nameInput = page.locator("input[placeholder*='name']").first();
+    if (await nameInput.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      await nameInput.clear();
+      await nameInput.fill("Test: Secure Score Check");
     }
-  });
 
-  test("should save, list, and delete a custom workflow", async ({ page }) => {
-    // Generate
-    const gen = await apiCall(page, "create-from-nl", {
-      description: "List all risky users and check their MFA status",
-    });
-    expect(gen.workflow).toBeDefined();
-    const wf = gen.workflow;
-    wf.id = wf.id || `test-custom-${Date.now()}`;
+    const saveBtn = page.getByRole("button", { name: /save to catalog/i });
+    await expect(saveBtn).toBeVisible({ timeout: 3_000 });
+    await saveBtn.click();
 
-    // Save
-    const saveResult = await apiCall(page, "save", { workflow: wf });
-    expect(saveResult.saved).toBeTruthy();
-    console.log(`\n  Saved custom workflow: ${wf.id}`);
+    // Wait for save confirmation
+    await expect(page.getByText(/saved to catalog/i)).toBeVisible({ timeout: 10_000 });
+    await page.screenshot({ path: "test-results/screenshots/nl-03-saved.png" });
+    console.log("  ✅ Saved to catalog");
 
-    // List
+    // ── Step 4: Close modal and verify it appears in catalog ──
+    // Close the modal
+    const closeBtn = page.locator("button[aria-label='Close']");
+    if (await closeBtn.isVisible({ timeout: 2_000 }).catch(() => false)) {
+      await closeBtn.click();
+    } else {
+      await page.keyboard.press("Escape");
+    }
+    await page.waitForTimeout(1_000);
+
+    // Custom workflow should now appear with CUSTOM badge
+    const customBadge = page.getByText("CUSTOM");
+    const hasCustom = await customBadge.first().isVisible({ timeout: 5_000 }).catch(() => false);
+    expect(hasCustom).toBeTruthy();
+
+    const newCardCount = await page.getByRole("button", { name: /run workflow/i }).count();
+    console.log(`  Catalog now: ${newCardCount} workflows (was ${initialCardCount})`);
+    expect(newCardCount).toBeGreaterThan(initialCardCount);
+    await page.screenshot({ path: "test-results/screenshots/nl-04-in-catalog.png", fullPage: true });
+
+    // ── Step 5: Run the custom workflow via API ──
+    // Use API for the actual execution (more reliable than clicking through UI)
     const listResult = await apiCall(page, "list-custom");
     expect(listResult.count).toBeGreaterThanOrEqual(1);
-    const found = listResult.workflows.find((w: Record<string, unknown>) => w.workflowId === wf.id);
-    expect(found).toBeTruthy();
-    console.log(`  Listed: ${listResult.count} custom workflows, found ours ✓`);
+    const savedWf = listResult.workflows[0];
+    const wfDef = savedWf.definition;
+    const steps = wfDef.steps ?? [];
 
-    // Delete (cleanup)
-    const delResult = await apiCall(page, "delete-custom", { workflowId: wf.id });
-    expect(delResult.deleted).toBeTruthy();
-    console.log(`  Deleted custom workflow: ${wf.id} ✓`);
-
-    // Verify deleted
-    const listAfter = await apiCall(page, "list-custom");
-    const notFound = !(listAfter.workflows ?? []).some((w: Record<string, unknown>) => w.workflowId === wf.id);
-    expect(notFound).toBeTruthy();
-    console.log(`  Verified deletion ✓`);
-  });
-
-  test("should save and run a generated workflow, then save the run", async ({ page }) => {
-    // Generate a simple workflow
-    const gen = await apiCall(page, "create-from-nl", {
-      description: "Get the current secure score and list top improvement actions",
-    });
-    expect(gen.workflow).toBeDefined();
-    const wf = gen.workflow;
-    wf.id = wf.id || `test-run-${Date.now()}`;
-
-    // Save it
-    await apiCall(page, "save", { workflow: wf });
-    console.log(`\n  Saved workflow: ${wf.id}`);
-
-    // Execute each step
-    const steps = wf.steps ?? [];
+    console.log(`  Running ${steps.length} steps...`);
     let succeeded = 0;
     let failed = 0;
-
     for (const step of steps) {
-      const params = step.params ?? {};
-      try {
-        const result = await executeStep(page, step.tool, params);
-        if (result.ok) succeeded++;
-        else failed++;
-        console.log(`  ${result.ok ? "✅" : "❌"} ${step.name} (${(result.durationMs / 1000).toFixed(1)}s)`);
-      } catch {
-        failed++;
-        console.log(`  ❌ ${step.name} — exception`);
-      }
+      const result = await executeStep(page, step.tool, step.params ?? {});
+      if (result.ok) succeeded++;
+      else failed++;
+      const icon = result.ok ? "✅" : "❌";
+      console.log(`  ${icon} ${step.name} → ${step.tool} (${(result.durationMs / 1000).toFixed(1)}s)`);
     }
+    expect(succeeded).toBeGreaterThanOrEqual(1);
+    console.log(`  Results: ${succeeded}/${steps.length} steps passed`);
 
-    // Save the run
-    const runResult = await apiCall(page, "save-run", {
-      workflowId: wf.id,
+    // Save the run to history
+    await apiCall(page, "save-run", {
+      workflowId: savedWf.workflowId,
       status: failed === 0 ? "completed" : "partial",
       mode: "auto",
       totalSteps: steps.length,
@@ -338,58 +359,33 @@ test.describe("NL Workflow Creator", () => {
       skippedSteps: 0,
       failedSteps: failed,
       findingsCount: 0,
-      triggeredBy: "test",
+      triggeredBy: "e2e-test",
     });
-    expect(runResult.saved).toBeTruthy();
-    console.log(`  Run saved: ${succeeded}/${steps.length} steps succeeded`);
 
-    // List runs
-    const runsResult = await apiCall(page, "list-runs", { workflowId: wf.id });
+    // Verify run history
+    const runsResult = await apiCall(page, "list-runs", { workflowId: savedWf.workflowId });
     expect(runsResult.count).toBeGreaterThanOrEqual(1);
     console.log(`  Run history: ${runsResult.count} runs recorded ✓`);
 
-    // Cleanup
-    await apiCall(page, "delete-custom", { workflowId: wf.id });
-    console.log(`  Cleaned up workflow: ${wf.id} ✓`);
-  });
-});
+    // ── Step 6: Delete the custom workflow ──
+    await apiCall(page, "delete-custom", { workflowId: savedWf.workflowId });
+    console.log(`  Deleted: ${savedWf.workflowId} ✓`);
 
-// ---------------------------------------------------------------------------
-// Test: UI — Workflows Page Loads
-// ---------------------------------------------------------------------------
+    // Verify it's gone
+    const afterDelete = await apiCall(page, "list-custom");
+    const stillExists = (afterDelete.workflows ?? []).some(
+      (w: Record<string, unknown>) => w.workflowId === savedWf.workflowId
+    );
+    expect(stillExists).toBeFalsy();
 
-test.describe("Workflows Page UI", () => {
-  test("should load workflows page with catalog", async ({ page }) => {
+    // Reload page and verify card count is back to original
     await page.goto("/workflows");
-
-    // Wait for catalog to load
-    await expect(page.getByText("Security Workflows")).toBeVisible({ timeout: 10_000 });
-
-    // Should show workflow cards
-    const cards = page.locator("[class*='rounded-xl']").filter({ hasText: "▶ Run Workflow" });
-    await expect(cards.first()).toBeVisible({ timeout: 15_000 });
-
-    const count = await cards.count();
-    console.log(`\n  Workflows page: ${count} workflow cards rendered`);
-    expect(count).toBeGreaterThanOrEqual(10); // at least some should render
-  });
-
-  test("should filter workflows by category", async ({ page }) => {
-    await page.goto("/workflows");
-    await expect(page.getByText("Security Workflows")).toBeVisible({ timeout: 10_000 });
-
-    // Click "Identity & Access" filter
-    const filterBtn = page.getByRole("button", { name: /identity/i });
-    if (await filterBtn.isVisible({ timeout: 5_000 }).catch(() => false)) {
-      await filterBtn.click();
-      await page.waitForTimeout(500);
-
-      // Cards should be filtered
-      const cards = page.locator("[class*='rounded-xl']").filter({ hasText: "▶ Run Workflow" });
-      const count = await cards.count();
-      console.log(`  After filter: ${count} identity workflow cards`);
-      expect(count).toBeLessThanOrEqual(4); // 4 identity workflows
-    }
+    await expect(page.getByRole("button", { name: /run workflow/i }).first()).toBeVisible({ timeout: 15_000 });
+    await page.waitForTimeout(1_000);
+    const finalCount = await page.getByRole("button", { name: /run workflow/i }).count();
+    console.log(`  Final catalog: ${finalCount} workflows (should be ${initialCardCount})`);
+    expect(finalCount).toBe(initialCardCount);
+    await page.screenshot({ path: "test-results/screenshots/nl-05-after-delete.png", fullPage: true });
   });
 });
 

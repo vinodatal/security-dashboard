@@ -73,13 +73,19 @@ export async function POST(req: NextRequest) {
       }
 
       case "generate": {
-        if (!body.workflowId) {
-          return NextResponse.json({ error: "workflowId required" }, { status: 400 });
+        if (!body.workflowId && !body.definition) {
+          return NextResponse.json({ error: "workflowId or definition required" }, { status: 400 });
         }
         const args: Record<string, unknown> = {
-          workflowId: body.workflowId,
           mode: body.mode ?? "guided",
         };
+        if (body.workflowId) args.workflowId = body.workflowId;
+        if (body.definition) {
+          // Pass custom workflow definition as JSON string to MCP
+          args.definition = typeof body.definition === "string"
+            ? body.definition
+            : JSON.stringify(body.definition);
+        }
         if (body.context) {
           args.context = JSON.stringify(body.context);
         }

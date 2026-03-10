@@ -32,6 +32,7 @@ interface Workflow {
   steps: WorkflowStep[];
   triggerConditions?: string[];
   stepsCount?: number;
+  source?: string; // "built-in" | "nl-generated" | "user"
 }
 
 interface ExecutionStep {
@@ -166,14 +167,17 @@ function StepStatusIcon({ status }: { status: string }) {
 function WorkflowCard({
   workflow,
   onRun,
+  onDelete,
 }: {
   workflow: Workflow;
   onRun: (w: Workflow) => void;
+  onDelete?: (w: Workflow) => void;
 }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   const icon = CATEGORY_ICONS[workflow.category] ?? "🔧";
   const label = CATEGORY_LABELS[workflow.category] ?? workflow.category;
   const stepCount = workflow.stepsCount ?? workflow.steps?.length ?? 0;
+  const isCustom = workflow.source && workflow.source !== "built-in";
 
   return (
     <div className="flex flex-col bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 shadow-sm hover:shadow-md transition-shadow">
@@ -187,6 +191,11 @@ function WorkflowCard({
             <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 leading-snug">
               {workflow.name}
             </h3>
+            {isCustom ? (
+              <span className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300 border border-purple-200 dark:border-purple-800">
+                CUSTOM
+              </span>
+            ) : null}
           </div>
           <ComplexityBadge complexity={workflow.complexity} />
         </div>
@@ -232,12 +241,22 @@ function WorkflowCard({
 
       {/* Card actions */}
       <div className="border-t border-gray-100 dark:border-gray-800 px-5 py-3 flex items-center justify-between">
-        <button
-          onClick={() => onRun(workflow)}
-          className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-medium text-white transition-colors"
-        >
-          ▶ Run Workflow
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => onRun(workflow)}
+            className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-medium text-white transition-colors"
+          >
+            ▶ Run Workflow
+          </button>
+          {isCustom && onDelete ? (
+            <button
+              onClick={() => onDelete(workflow)}
+              className="inline-flex items-center gap-1.5 rounded-lg bg-red-100 hover:bg-red-200 dark:bg-red-900/30 dark:hover:bg-red-900/50 px-3 py-2 text-sm font-medium text-red-700 dark:text-red-400 transition-colors"
+            >
+              🗑 Delete
+            </button>
+          ) : null}
+        </div>
         <button
           onClick={() => setDetailsOpen((prev) => !prev)}
           className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
@@ -596,15 +615,21 @@ function NLCreatorModal({
   onClose,
   api,
   onRunGenerated,
+  onSaved,
 }: {
   onClose: () => void;
   api: (action: string, body?: Record<string, unknown>) => Promise<unknown>;
   onRunGenerated: (workflow: Workflow) => void;
+  onSaved: () => void;
 }) {
   const [description, setDescription] = useState("");
   const [loading, setLoading] = useState(false);
+  const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [generatedWorkflow, setGeneratedWorkflow] = useState<Workflow | null>(null);
+  const [customName, setCustomName] = useState("");
+  const [customCategory, setCustomCategory] = useState("reporting");
+  const [saved, setSaved] = useState(false);
 
   const handleGenerate = async () => {
     if (!description.trim()) return;
@@ -621,6 +646,9 @@ function NLCreatorModal({
       if (!wf.requiredLicenses) wf.requiredLicenses = [];
       if (!wf.requiredTools) wf.requiredTools = wf.steps.map((s: WorkflowStep) => s.tool);
       setGeneratedWorkflow(wf);
+      setCustomName(wf.name || "");
+      setCustomCategory(wf.category || "reporting");
+      setSaved(false);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
@@ -754,20 +782,87 @@ function NLCreatorModal({
                 </div>
               </div>
 
+              {/* Editable fields */}
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Workflow Name</label>
+                  <input
+                    type="text"
+                    value={customName}
+                    onChange={(e) => setCustomName(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-indigo-500"
+                    placeholder="Give your workflow a name"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Category</label>
+                  <select
+                    value={customCategory}
+                    onChange={(e) => setCustomCategory(e.target.value)}
+                    className="w-full rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-sm text-gray-900 dark:text-gray-100 outline-none focus:border-indigo-500"
+                  >
+                    <option value="incident-response">🚨 Incident Response</option>
+                    <option value="identity-access">🔐 Identity & Access</option>
+                    <option value="compliance-posture">📋 Compliance & Posture</option>
+                    <option value="device-endpoint">💻 Device & Endpoint</option>
+                    <option value="data-protection">🛡️ Data Protection</option>
+                    <option value="reporting">📊 Reporting</option>
+                  </select>
+                </div>
+              </div>
+
+              {saved ? (
+                <div className="rounded-lg bg-emerald-50 dark:bg-emerald-950 border border-emerald-200 dark:border-emerald-800 p-3 text-sm text-emerald-700 dark:text-emerald-300">
+                  ✅ Saved to catalog! You can find it alongside built-in workflows.
+                </div>
+              ) : null}
+
               <div className="flex gap-3">
                 <button
+                  onClick={async () => {
+                    setSaving(true);
+                    try {
+                      const wfToSave = {
+                        ...generatedWorkflow,
+                        name: customName || generatedWorkflow.name,
+                        category: customCategory,
+                        id: generatedWorkflow.id || `custom-${Date.now()}`,
+                        source: "nl-generated",
+                      };
+                      await api("save", { workflow: wfToSave });
+                      setSaved(true);
+                      onSaved();
+                    } catch (err: unknown) {
+                      setError(err instanceof Error ? err.message : String(err));
+                    } finally {
+                      setSaving(false);
+                    }
+                  }}
+                  disabled={saving || saved || !customName.trim()}
+                  className="flex-1 rounded-lg bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 px-4 py-3 text-sm font-semibold text-white transition-colors"
+                >
+                  {saving ? "Saving…" : saved ? "✓ Saved" : "💾 Save to Catalog"}
+                </button>
+                <button
                   onClick={() => {
-                    onRunGenerated(generatedWorkflow);
+                    const wfToRun = {
+                      ...generatedWorkflow,
+                      name: customName || generatedWorkflow.name,
+                      category: customCategory,
+                    };
+                    onRunGenerated(wfToRun);
                     onClose();
                   }}
                   className="flex-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 px-4 py-3 text-sm font-semibold text-white transition-colors"
                 >
-                  ▶ Run Workflow
+                  ▶ Run Now
                 </button>
                 <button
                   onClick={() => {
                     setGeneratedWorkflow(null);
                     setDescription("");
+                    setCustomName("");
+                    setSaved(false);
                   }}
                   className="rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-3 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
                 >
@@ -808,6 +903,61 @@ function WorkflowsContent() {
   const [catalogLoading, setCatalogLoading] = useState(true);
   const [catalogError, setCatalogError] = useState("");
 
+  // Reload catalog (called on mount and after save/delete)
+  const loadCatalog = useCallback(async () => {
+    setCatalogLoading(true);
+    setCatalogError("");
+    try {
+      const [catalogData, customData] = await Promise.all([
+        api("catalog") as Promise<{ byCategory?: Record<string, Workflow[]> }>,
+        api("list-custom") as Promise<{ workflows?: Array<Record<string, unknown>> }>,
+      ]);
+
+      const flat: Workflow[] = [];
+      if (catalogData?.byCategory) {
+        for (const cat of Object.keys(catalogData.byCategory)) {
+          for (const w of catalogData.byCategory[cat]) {
+            flat.push({
+              ...w,
+              category: w.category ?? cat,
+              tags: w.tags ?? [],
+              requiredLicenses: w.requiredLicenses ?? [],
+              requiredTools: w.requiredTools ?? [],
+              steps: w.steps ?? [],
+              source: "built-in",
+            });
+          }
+        }
+      }
+
+      if (customData?.workflows) {
+        for (const cw of customData.workflows) {
+          const def = (cw.definition ?? {}) as Record<string, unknown>;
+          flat.push({
+            id: (cw.workflowId as string) ?? (def.id as string) ?? `custom-${cw.id}`,
+            name: (cw.name as string) ?? (def.name as string) ?? "Custom Workflow",
+            description: (cw.description as string) ?? (def.description as string) ?? "",
+            category: (cw.category as string) ?? "reporting",
+            complexity: ((cw.complexity as string) ?? "medium") as Workflow["complexity"],
+            estimatedDuration: (cw.estimatedDuration as string) ?? "5-15 min",
+            tags: [...((cw.tags as string[]) ?? []), "custom"],
+            requiredLicenses: (def.requiredLicenses as string[]) ?? [],
+            requiredTools: (def.requiredTools as string[]) ?? [],
+            steps: (def.steps as WorkflowStep[]) ?? [],
+            source: (cw.source as string) ?? "user",
+          });
+        }
+      }
+
+      setWorkflows(flat);
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setCatalogError(msg);
+    } finally {
+      setCatalogLoading(false);
+    }
+  }, [api]);
+
   // --- Filters ---
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [complexityFilter, setComplexityFilter] = useState("all");
@@ -822,46 +972,10 @@ function WorkflowsContent() {
   // ---------------------------------------------------------------------------
   // Load catalog on mount
   // ---------------------------------------------------------------------------
+  // Load catalog on mount
   useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        const data = (await api("catalog")) as {
-          byCategory?: Record<string, Workflow[]>;
-        };
-        if (cancelled) return;
-
-        // Flatten byCategory map into a flat list
-        const flat: Workflow[] = [];
-        if (data?.byCategory) {
-          for (const cat of Object.keys(data.byCategory)) {
-            for (const w of data.byCategory[cat]) {
-              flat.push({
-                ...w,
-                category: w.category ?? cat,
-                tags: w.tags ?? [],
-                requiredLicenses: w.requiredLicenses ?? [],
-                requiredTools: w.requiredTools ?? [],
-                steps: w.steps ?? [],
-              });
-            }
-          }
-        }
-        setWorkflows(flat);
-      } catch (err: unknown) {
-        if (cancelled) return;
-        const msg = err instanceof Error ? err.message : String(err);
-        setCatalogError(msg);
-      } finally {
-        if (!cancelled) setCatalogLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [api]);
+    loadCatalog();
+  }, [loadCatalog]);
 
   // ---------------------------------------------------------------------------
   // Run workflow
@@ -873,8 +987,15 @@ function WorkflowsContent() {
       setActivePlan(null);
 
       try {
-        const raw = (await api("generate", { workflowId: workflow.id })) as Record<string, unknown>;
-        // The API may return steps at root or nested — normalize
+        const isCustom = workflow.source && workflow.source !== "built-in";
+
+        // For custom workflows, pass the full definition to MCP so it gets
+        // environment-aware treatment (tenantId injection, condition eval)
+        const genArgs: Record<string, unknown> = isCustom
+          ? { definition: JSON.stringify(workflow) }
+          : { workflowId: workflow.id };
+
+        const raw = (await api("generate", genArgs)) as Record<string, unknown>;
         const plan: ExecutionPlan = {
           executionId: (raw.executionId as string) ?? "",
           workflowId: (raw.workflowId as string) ?? workflow.id,
@@ -903,6 +1024,20 @@ function WorkflowsContent() {
       handleRun(workflow);
     },
     [handleRun],
+  );
+
+  const handleDelete = useCallback(
+    async (workflow: Workflow) => {
+      if (!confirm(`Delete custom workflow "${workflow.name}"?`)) return;
+      try {
+        await api("delete-custom", { workflowId: workflow.id });
+        await loadCatalog();
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err);
+        setCatalogError(msg);
+      }
+    },
+    [api, loadCatalog],
   );
 
   // ---------------------------------------------------------------------------
@@ -1127,7 +1262,7 @@ function WorkflowsContent() {
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
             {filtered.map((w) => (
               <div key={w.id} className="relative">
-                <WorkflowCard workflow={w} onRun={handleRun} />
+                <WorkflowCard workflow={w} onRun={handleRun} onDelete={handleDelete} />
                 {/* Generating overlay */}
                 {generatingPlan === w.id ? (
                   <div className="absolute inset-0 rounded-xl bg-white/70 dark:bg-gray-900/70 backdrop-blur-sm flex items-center justify-center">
@@ -1149,6 +1284,7 @@ function WorkflowsContent() {
           onClose={() => setShowCreator(false)}
           api={api}
           onRunGenerated={handleRunGenerated}
+          onSaved={loadCatalog}
         />
       ) : null}
     </div>
