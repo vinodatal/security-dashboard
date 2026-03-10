@@ -7,7 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "scheduler": "npx tsx src/scheduler/index.ts"
+    "scheduler": "npx tsx src/scheduler/index.ts",
+    "test": "npx playwright test",
+    "test:headed": "npx playwright test --headed",
+    "test:ui": "npx playwright test --ui",
+    "test:report": "npx playwright show-report test-results/html"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.26.0",
@@ -25,6 +29,7 @@
     "remark-gfm": "^4.0.1"
   },
   "devDependencies": {
+    "@playwright/test": "^1.58.2",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",

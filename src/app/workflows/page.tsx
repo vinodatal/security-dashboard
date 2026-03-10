@@ -613,8 +613,14 @@ function NLCreatorModal({
     setGeneratedWorkflow(null);
 
     try {
-      const result = (await api("create-from-nl", { description: description.trim() })) as Workflow;
-      setGeneratedWorkflow(result);
+      const result = (await api("create-from-nl", { description: description.trim() })) as Record<string, unknown>;
+      const wf = (result.workflow ?? result) as Workflow;
+      // Ensure steps array exists
+      if (!wf.steps) wf.steps = [];
+      if (!wf.tags) wf.tags = [];
+      if (!wf.requiredLicenses) wf.requiredLicenses = [];
+      if (!wf.requiredTools) wf.requiredTools = wf.steps.map((s: WorkflowStep) => s.tool);
+      setGeneratedWorkflow(wf);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : String(err);
       setError(message);
@@ -725,11 +731,11 @@ function NLCreatorModal({
 
                 {/* Steps preview */}
                 <h4 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-1">
-                  Steps ({generatedWorkflow.steps.length})
+                  Steps ({(generatedWorkflow.steps ?? []).length})
                 </h4>
                 <ol className="list-decimal list-inside space-y-1 text-sm text-gray-600 dark:text-gray-400">
-                  {generatedWorkflow.steps.map((step) => (
-                    <li key={step.id}>
+                  {(generatedWorkflow.steps ?? []).map((step: WorkflowStep, idx: number) => (
+                    <li key={step.id ?? idx}>
                       {step.name}{" "}
                       <code className="text-[11px] bg-white/50 dark:bg-gray-800 rounded px-1 text-indigo-600 dark:text-indigo-400">
                         {step.tool}
@@ -742,7 +748,7 @@ function NLCreatorModal({
                 <div className="flex gap-4 mt-3 text-xs text-gray-500 dark:text-gray-400">
                   <span>⏱ {generatedWorkflow.estimatedDuration}</span>
                   <span>
-                    📋 {generatedWorkflow.stepsCount ?? generatedWorkflow.steps.length}{" "}
+                    📋 {generatedWorkflow.stepsCount ?? (generatedWorkflow.steps ?? []).length}{" "}
                     steps
                   </span>
                 </div>
