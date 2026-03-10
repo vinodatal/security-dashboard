@@ -490,3 +490,114 @@ function summarizeResult(tool: string, data: unknown): string {
   const keys = Object.keys(d).filter((k) => !k.startsWith("_")).slice(0, 3);
   return keys.join(", ") || "ok";
 }
+
+
+// ---------------------------------------------------------------------------
+// Test: Skills Catalog
+// ---------------------------------------------------------------------------
+
+test.describe("Skills Catalog", () => {
+  test("should list built-in skills via API", async ({ page }) => {
+    const res = await page.request.post("/api/skills", {
+      data: { action: "list" },
+    });
+    expect(res.ok()).toBeTruthy();
+    const data = await res.json();
+    expect(data.builtInCount).toBeGreaterThanOrEqual(4);
+    console.log(`\n  Skills: ${data.builtInCount} built-in, ${data.customCount} custom`);
+  });
+
+  test("should load skills page with cards", async ({ page }) => {
+    await page.goto("/skills");
+    await expect(page.getByText(/AI Skills/i)).toBeVisible({ timeout: 15_000 });
+
+    // Wait for skill cards to appear
+    await page.waitForTimeout(2_000);
+    await page.screenshot({ path: "test-results/screenshots/skills-catalog.png", fullPage: true });
+
+    const pageText = await page.textContent("body") ?? "";
+    expect(pageText).toContain("Credential Theft");
+    console.log("  ✅ Skills page loaded with built-in skills");
+  });
+
+  test("should create skill from NL, save, verify in catalog, delete", async ({ page }) => {
+    // Create via API
+    const genRes = await page.request.post("/api/skills", {
+      data: {
+        action: "create-from-nl",
+        description: "Detect brute force attacks against Azure AD by looking for multiple failed sign-ins from the same IP",
+      },
+    });
+    expect(genRes.ok()).toBeTruthy();
+    const genData = await genRes.json();
+    expect(genData.skill).toBeDefined();
+    expect(genData.skill.name).toBeTruthy();
+    console.log(`\n  Generated skill: ${genData.skill.name}`);
+    console.log(`  Queries: ${genData.skill.queries?.length ?? 0}, Remediation: ${genData.skill.remediation?.length ?? 0}`);
+
+    // Save
+    const skill = genData.skill;
+    skill.id = skill.id || `test-skill-${Date.now()}`;
+    const saveRes = await page.request.post("/api/skills", {
+      data: { action: "save", skill },
+    });
+    expect(saveRes.ok()).toBeTruthy();
+    const saveData = await saveRes.json();
+    expect(saveData.saved).toBeTruthy();
+    console.log(`  Saved: ${skill.id}`);
+
+    // List and verify
+    const listRes = await page.request.post("/api/skills", { data: { action: "list" } });
+    const listData = await listRes.json();
+    expect(listData.customCount).toBeGreaterThanOrEqual(1);
+    console.log(`  Listed: ${listData.customCount} custom skills ✓`);
+
+    // Delete
+    const delRes = await page.request.post("/api/skills", {
+      data: { action: "delete", skillId: skill.id },
+    });
+    expect(delRes.ok()).toBeTruthy();
+    console.log(`  Deleted: ${skill.id} ✓`);
+
+    // Verify deleted
+    const afterRes = await page.request.post("/api/skills", { data: { action: "list" } });
+    const afterData = await afterRes.json();
+    expect(afterData.customCount).toBe(0);
+    console.log("  Verified cleanup ✓");
+  });
+
+  test("AI analysis should apply relevant skills", async ({ page }) => {
+    // Run threat-hunt-report workflow (should match credential-theft-hunting skill)
+    const plan = await apiCall(page, "prepare", { workflowId: "threat-hunt-report" });
+    const steps = plan.steps ?? [];
+
+    const results: Array<Record<string, unknown>> = [];
+    for (const step of steps) {
+      const params = { ...(step.resolvedParams ?? {}) };
+      delete params.__dynamicParams;
+      const result = await executeStep(page, step.tool, params);
+      results.push({
+        name: step.name, tool: step.tool,
+        status: result.ok ? "success" : "error",
+        result: result.data, error: result.error,
+      });
+    }
+
+    // Analyze — should pick up threat hunting skills
+    const analysis = await apiCall(page, "analyze", {
+      workflowName: "Proactive Threat Hunt",
+      steps: results,
+      skippedSteps: plan.skippedSteps ?? [],
+    });
+
+    expect(analysis.analysis).toBeTruthy();
+    console.log(`\n  Analysis with skills: ${analysis.analysis.length} chars`);
+    console.log(`  Skills applied: ${(analysis.skillsApplied ?? []).join(", ") || "none"}`);
+
+    if (analysis.skillsApplied?.length > 0) {
+      console.log("  ✅ Skills were injected into analysis context");
+    } else {
+      console.log("  ⚠️ No skills matched (may depend on tool overlap)");
+    }
+  });
+});

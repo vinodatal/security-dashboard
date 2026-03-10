@@ -12,8 +12,9 @@
 import { chatCompletion, type AgentMessage } from "./llm";
 import { callTool } from "../mcp-client";
 import { getRemediationContext, getDocLinks } from "./remediation-kb";
-import { getTenantCredentials } from "../db/index";
+import { getTenantCredentials, getCustomSkills } from "../db/index";
 import { decrypt } from "../crypto";
+import { BUILT_IN_SKILLS, buildSkillContext, selectRelevantSkills, type SkillPackage } from "../skills";
 
 interface StepData {
   name: string;
@@ -33,6 +34,7 @@ interface AnalysisResult {
   analysis: string;
   toolCallsMade: string[];
   additionalFindings: string[];
+  skillsApplied: string[];
   model: string;
 }
 
@@ -96,6 +98,32 @@ export async function analyzeWorkflow(
   const remediationContext = getRemediationContext(toolNames);
   const docLinks = getDocLinks(toolNames);
   const mcpEnv = getMcpEnv(tenantId);
+
+  // Load and select relevant skills
+  const customSkillRows = getCustomSkills(tenantId);
+  const customSkills: SkillPackage[] = customSkillRows.map((r) => ({
+    ...(r.definition as SkillPackage),
+    id: r.skillId as string,
+    name: r.name as string,
+    source: r.source as SkillPackage["source"],
+  }));
+  const allSkills = [...BUILT_IN_SKILLS, ...customSkills];
+  const selectedSkills = selectRelevantSkills(allSkills, {
+    toolNames,
+    tags: steps.flatMap((s) => {
+      const d = s.result as Record<string, unknown> | undefined;
+      if (!d) return [];
+      // Extract tags from findings data
+      const tags: string[] = [];
+      if (d.findings && Array.isArray(d.findings)) {
+        for (const f of d.findings as Array<Record<string, unknown>>) {
+          if (f.type) tags.push(String(f.type));
+        }
+      }
+      return tags;
+    }),
+  });
+  const skillContext = buildSkillContext(selectedSkills);
 
   // Build step data for LLM
   const stepsText = steps
@@ -178,7 +206,7 @@ IMPORTANT:
 - If a step returned empty data or errors, note it as "insufficient data" not "no issues"
 - Replace <PLACEHOLDERS> in scripts with actual values from step data where available
 - Include Microsoft Learn documentation links for every remediation item
-${remediationContext}${docsText}`;
+${remediationContext}${docsText}${skillContext}`;
 
   const userMessage = `Analyze the results of the "${workflowName}" workflow:\n\n${stepsText}${skippedText}`;
 
@@ -253,6 +281,7 @@ ${remediationContext}${docsText}`;
     analysis: finalAnalysis,
     toolCallsMade,
     additionalFindings,
+    skillsApplied: selectedSkills.map((s) => s.name),
     model: "gpt-4o-mini",
   };
 }

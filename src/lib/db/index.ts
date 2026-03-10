@@ -146,6 +146,23 @@ export function getDb(): Database.Database {
 
     CREATE INDEX IF NOT EXISTS idx_custom_workflows_tenant
       ON custom_workflows (tenant_id);
+
+    CREATE TABLE IF NOT EXISTS custom_skills (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      skill_id TEXT NOT NULL UNIQUE,
+      tenant_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'general',
+      tags TEXT NOT NULL DEFAULT '[]',
+      definition TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'uploaded',
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_custom_skills_tenant
+      ON custom_skills (tenant_id);
   `);
 
   return db;
@@ -557,4 +574,60 @@ export function getWorkflowRuns(tenantId: string, workflowId?: string, limit = 2
   return db.prepare(
     "SELECT * FROM workflow_runs WHERE tenant_id = ? ORDER BY started_at DESC LIMIT ?"
   ).all(tenantId, limit) as Array<Record<string, unknown>>;
+}
+
+// --- Custom Skills ---
+
+export function saveCustomSkill(
+  tenantId: string,
+  skill: {
+    id: string;
+    name: string;
+    description: string;
+    category: string;
+    tags: string[];
+    definition: Record<string, unknown>;
+    source?: string;
+  }
+): number {
+  const db = getDb();
+  const result = db.prepare(`
+    INSERT OR REPLACE INTO custom_skills
+      (skill_id, tenant_id, name, description, category, tags, definition, source, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+  `).run(
+    skill.id,
+    tenantId,
+    skill.name,
+    skill.description,
+    skill.category,
+    JSON.stringify(skill.tags),
+    JSON.stringify(skill.definition),
+    skill.source ?? "uploaded"
+  );
+  return result.lastInsertRowid as number;
+}
+
+export function getCustomSkills(tenantId: string): Array<Record<string, unknown>> {
+  const rows = getDb().prepare(
+    "SELECT * FROM custom_skills WHERE tenant_id = ? ORDER BY updated_at DESC"
+  ).all(tenantId) as Array<Record<string, unknown>>;
+
+  return rows.map((r) => ({
+    id: r.id,
+    skillId: r.skill_id,
+    name: r.name,
+    description: r.description,
+    category: r.category,
+    tags: JSON.parse((r.tags as string) || "[]"),
+    definition: JSON.parse((r.definition as string) || "{}"),
+    source: r.source,
+    createdAt: r.created_at,
+  }));
+}
+
+export function deleteCustomSkill(skillId: string, tenantId: string) {
+  getDb().prepare(
+    "DELETE FROM custom_skills WHERE skill_id = ? AND tenant_id = ?"
+  ).run(skillId, tenantId);
 }
