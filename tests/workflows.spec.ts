@@ -204,11 +204,18 @@ test.describe("Workflow Execution", () => {
 // ---------------------------------------------------------------------------
 
 test.describe("Workflow Catalog", () => {
-  test("should display all 22 workflows on the page", async ({ page }) => {
+  test("should display all 22 built-in workflows on the page", async ({ page }) => {
+    // Clean up any leftover custom workflows from previous test runs
+    try {
+      const customs = await apiCall(page, "list-custom");
+      for (const cw of (customs.workflows ?? []) as Array<Record<string, unknown>>) {
+        await apiCall(page, "delete-custom", { workflowId: cw.workflowId });
+      }
+    } catch { /* ignore if no customs */ }
+
     await page.goto("/workflows");
     await expect(page.getByText(/Security Workflows/i)).toBeVisible({ timeout: 15_000 });
 
-    // Wait for cards to load
     const runButtons = page.getByRole("button", { name: /run workflow/i });
     await expect(runButtons.first()).toBeVisible({ timeout: 15_000 });
 

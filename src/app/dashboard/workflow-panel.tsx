@@ -271,7 +271,7 @@ export function WorkflowPanel() {
     setWorkflowStartTime(Date.now());
     setCopied(false);
     try {
-      const result = await api("generate", { workflowId, context });
+      const result = await api("prepare", { workflowId, context });
       setPlan(result);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));

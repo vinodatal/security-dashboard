@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(result);
       }
 
-      case "generate": {
+      case "prepare": {
         if (!body.workflowId && !body.definition) {
           return NextResponse.json({ error: "workflowId or definition required" }, { status: 400 });
         }
@@ -89,7 +89,7 @@ export async function POST(req: NextRequest) {
         if (body.context) {
           args.context = JSON.stringify(body.context);
         }
-        const result = await callTool("generate_workflow", args, mcpEnv);
+        const result = await callTool("prepare_workflow", args, mcpEnv);
         return NextResponse.json(result);
       }
 

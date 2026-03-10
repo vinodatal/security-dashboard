@@ -995,7 +995,7 @@ function WorkflowsContent() {
           ? { definition: JSON.stringify(workflow) }
           : { workflowId: workflow.id };
 
-        const raw = (await api("generate", genArgs)) as Record<string, unknown>;
+        const raw = (await api("prepare", genArgs)) as Record<string, unknown>;
 
         // Check for error response from MCP
         if (raw.error) {
