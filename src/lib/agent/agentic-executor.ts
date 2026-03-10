@@ -51,6 +51,20 @@ export interface AgenticResult {
   stepsSkipped: string[];
   analysis: string;
   totalDurationMs: number;
+  debug: {
+    systemPrompt: string;
+    llmCalls: Array<{
+      iteration: number;
+      messagesCount: number;
+      toolCallsMade: string[];
+      responseType: "tool_call" | "text" | "analysis";
+      durationMs: number;
+    }>;
+    totalLlmCalls: number;
+    totalToolCalls: number;
+    skillsApplied: string[];
+    modelUsed: string;
+  };
 }
 
 // ─── Tool definitions for LLM ───────────────────────────────────────────────
@@ -218,11 +232,11 @@ ${remediationContext}${docsText}${skillContext}`;
   let totalToolCalls = 0;
   const MAX_TOOL_CALLS = 15;
   const MAX_ITERATIONS = 20;
+  const llmCallLog: AgenticResult["debug"]["llmCalls"] = [];
 
   for (let iteration = 0; iteration < MAX_ITERATIONS; iteration++) {
     if (totalToolCalls >= MAX_TOOL_CALLS) {
       emit({ type: "agent_thinking", message: "Reached maximum tool call limit, producing analysis..." });
-      // Force final analysis
       messages.push({
         role: "user",
         content: "You've reached the tool call limit. Call produce_analysis now with your findings.",
@@ -230,6 +244,7 @@ ${remediationContext}${docsText}${skillContext}`;
     }
 
     const isLast = iteration === MAX_ITERATIONS - 1 || totalToolCalls >= MAX_TOOL_CALLS;
+    const llmStart = Date.now();
 
     const result = await chatCompletion(
       messages,
@@ -237,14 +252,28 @@ ${remediationContext}${docsText}${skillContext}`;
       4000
     );
 
-    // No tool calls — LLM produced text (shouldn't happen with tools, but handle it)
+    // No tool calls — LLM produced text
     if (!result.message.tool_calls || result.message.tool_calls.length === 0) {
+      llmCallLog.push({
+        iteration, messagesCount: messages.length,
+        toolCallsMade: [], responseType: "text",
+        durationMs: Date.now() - llmStart,
+      });
       if (result.message.content) {
         analysis = result.message.content;
         emit({ type: "analysis", message: "Analysis produced", data: analysis });
       }
       break;
     }
+
+    const callNames = result.message.tool_calls.map((tc: { function: { name: string } }) => tc.function.name);
+    const hasAnalysis = callNames.includes("produce_analysis");
+    llmCallLog.push({
+      iteration, messagesCount: messages.length,
+      toolCallsMade: callNames,
+      responseType: hasAnalysis ? "analysis" : "tool_call",
+      durationMs: Date.now() - llmStart,
+    });
 
     messages.push(result.message);
 
@@ -390,5 +419,13 @@ ${remediationContext}${docsText}${skillContext}`;
     stepsSkipped: skippedSteps,
     analysis,
     totalDurationMs: Date.now() - startTime,
+    debug: {
+      systemPrompt,
+      llmCalls: llmCallLog,
+      totalLlmCalls: llmCallLog.length,
+      totalToolCalls,
+      skillsApplied: selectedSkills.map(s => s.name),
+      modelUsed: "gpt-4o-mini",
+    },
   };
 }

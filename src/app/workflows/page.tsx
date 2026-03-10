@@ -378,6 +378,7 @@ function ExecutionPanel({
   const [analysisError, setAnalysisError] = useState("");
   const [agenticMode, setAgenticMode] = useState(false);
   const [agenticUpdates, setAgenticUpdates] = useState<Array<{ type: string; message: string; stepName?: string; toolName?: string }>>([]);
+  const [agenticDebug, setAgenticDebug] = useState<Record<string, unknown> | null>(null);
   const abortRef = useRef(false);
   const startTimeRef = useRef(Date.now());
 
@@ -590,6 +591,7 @@ function ExecutionPanel({
                       const updates = (res.updates ?? []) as Array<{ type: string; message: string; stepName?: string; toolName?: string }>;
                       setAgenticUpdates(updates);
                       setAnalysis((res.analysis as string) ?? "");
+                      setAgenticDebug((res.debug as Record<string, unknown>) ?? null);
 
                       // Mark planned steps as done based on agent execution
                       const executed = (res.stepsExecuted ?? []) as Array<Record<string, unknown>>;
@@ -775,6 +777,83 @@ function ExecutionPanel({
             })}
           </div>
         </div>
+      ) : null}
+
+      {/* Debug Panel */}
+      {agenticDebug ? (
+        <details className="border-t border-gray-100 dark:border-gray-800">
+          <summary className="p-4 cursor-pointer select-none text-sm font-semibold text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50 flex items-center gap-2">
+            <span className="group-open:rotate-90 transition-transform">▶</span>
+            🔍 Agent Debug Info
+            <span className="text-xs font-normal text-gray-400">
+              — {agenticDebug.totalLlmCalls as number} LLM calls, {agenticDebug.totalToolCalls as number} tool calls, model: {agenticDebug.modelUsed as string}
+            </span>
+          </summary>
+          <div className="px-5 pb-5 space-y-4 text-xs">
+            {/* Stats */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+                <p className="text-gray-500 dark:text-gray-400">LLM Calls</p>
+                <p className="text-lg font-bold text-gray-900 dark:text-gray-100">{agenticDebug.totalLlmCalls as number}</p>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+                <p className="text-gray-500 dark:text-gray-400">Tool Calls</p>
+                <p className="text-lg font-bold text-gray-900 dark:text-gray-100">{agenticDebug.totalToolCalls as number}</p>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+                <p className="text-gray-500 dark:text-gray-400">Model</p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{agenticDebug.modelUsed as string}</p>
+              </div>
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-3">
+                <p className="text-gray-500 dark:text-gray-400">Skills Applied</p>
+                <p className="text-sm font-semibold text-gray-900 dark:text-gray-100">{((agenticDebug.skillsApplied as string[]) ?? []).length}</p>
+              </div>
+            </div>
+
+            {/* Skills applied */}
+            {((agenticDebug.skillsApplied as string[]) ?? []).length > 0 ? (
+              <div>
+                <p className="font-semibold text-gray-700 dark:text-gray-300 mb-1">Skills Applied</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {((agenticDebug.skillsApplied as string[]) ?? []).map((s, i) => (
+                    <span key={i} className="px-2 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300 text-[11px]">{s}</span>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
+            {/* LLM call log */}
+            <div>
+              <p className="font-semibold text-gray-700 dark:text-gray-300 mb-1">LLM Call Trace</p>
+              <div className="space-y-1">
+                {((agenticDebug.llmCalls as Array<Record<string, unknown>>) ?? []).map((call, i) => (
+                  <div key={i} className="flex items-center gap-3 bg-gray-50 dark:bg-gray-800 rounded px-3 py-1.5">
+                    <span className="text-gray-400 font-mono w-6">#{call.iteration as number}</span>
+                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
+                      call.responseType === "analysis" ? "bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-300"
+                      : call.responseType === "tool_call" ? "bg-blue-100 dark:bg-blue-900 text-blue-700 dark:text-blue-300"
+                      : "bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300"
+                    }`}>{call.responseType as string}</span>
+                    <span className="text-gray-600 dark:text-gray-400">
+                      {((call.toolCallsMade as string[]) ?? []).join(", ") || "text response"}
+                    </span>
+                    <span className="ml-auto text-gray-400">{((call.durationMs as number) / 1000).toFixed(1)}s</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* System prompt */}
+            <details>
+              <summary className="font-semibold text-gray-700 dark:text-gray-300 cursor-pointer hover:text-gray-900 dark:hover:text-gray-100">
+                System Prompt ({((agenticDebug.systemPrompt as string) ?? "").length} chars)
+              </summary>
+              <pre className="mt-2 bg-gray-900 dark:bg-gray-950 text-gray-300 rounded-lg p-3 overflow-x-auto max-h-96 overflow-y-auto text-[11px] whitespace-pre-wrap">
+                {agenticDebug.systemPrompt as string}
+              </pre>
+            </details>
+          </div>
+        </details>
       ) : null}
 
       {/* AI Analysis + Results after completion */}
