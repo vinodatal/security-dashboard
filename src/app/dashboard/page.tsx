@@ -196,6 +196,12 @@ function DashboardContent() {
             >
               🔍 Investigate
             </button>
+            <button
+              onClick={() => router.push(`/workflows?tenantId=${tenantId}&subscriptionId=${subscriptionId}`)}
+              className="px-3 py-1.5 rounded-lg text-sm font-medium bg-gray-200 hover:bg-gray-300 dark:bg-gray-800 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-300"
+            >
+              🔧 Workflows
+            </button>
           </div>
           <div className="flex items-center gap-3">
             <select

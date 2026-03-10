@@ -101,6 +101,53 @@ export function getDb(): Database.Database {
   try { db.exec("ALTER TABLE alert_history ADD COLUMN mitigation_note TEXT"); } catch {}
   try { db.exec("ALTER TABLE alert_history ADD COLUMN last_seen_at TEXT NOT NULL DEFAULT (datetime('now'))"); } catch {}
 
+  // Custom workflows table
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS custom_workflows (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      workflow_id TEXT NOT NULL UNIQUE,
+      tenant_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT NOT NULL,
+      category TEXT NOT NULL DEFAULT 'reporting',
+      complexity TEXT NOT NULL DEFAULT 'medium',
+      estimated_duration TEXT NOT NULL DEFAULT '5-15 min',
+      tags TEXT NOT NULL DEFAULT '[]',
+      definition TEXT NOT NULL,
+      source TEXT NOT NULL DEFAULT 'user',
+      schedule TEXT,
+      schedule_enabled INTEGER NOT NULL DEFAULT 0,
+      notify_type TEXT,
+      notify_target TEXT,
+      last_run_at TEXT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS workflow_runs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      workflow_id TEXT NOT NULL,
+      tenant_id TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'running',
+      mode TEXT NOT NULL DEFAULT 'guided',
+      started_at TEXT NOT NULL DEFAULT (datetime('now')),
+      completed_at TEXT,
+      total_steps INTEGER NOT NULL DEFAULT 0,
+      completed_steps INTEGER NOT NULL DEFAULT 0,
+      skipped_steps INTEGER NOT NULL DEFAULT 0,
+      failed_steps INTEGER NOT NULL DEFAULT 0,
+      findings_count INTEGER NOT NULL DEFAULT 0,
+      report_md TEXT,
+      triggered_by TEXT NOT NULL DEFAULT 'user'
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_workflow_runs_tenant
+      ON workflow_runs (tenant_id, started_at);
+
+    CREATE INDEX IF NOT EXISTS idx_custom_workflows_tenant
+      ON custom_workflows (tenant_id);
+  `);
+
   return db;
 }
 
@@ -354,4 +401,160 @@ export function listTenantCredentials(): Array<{ tenantId: string; clientId: str
     )
   `);
   return db.prepare("SELECT tenant_id, client_id, updated_at FROM tenant_credentials").all() as any[];
+}
+
+// --- Custom Workflows ---
+
+export function saveCustomWorkflow(
+  tenantId: string,
+  workflow: {
+    id: string;
+    name: string;
+    description: string;
+    category: string;
+    complexity: string;
+    estimatedDuration: string;
+    tags: string[];
+    definition: Record<string, unknown>;
+    source?: string;
+    schedule?: string;
+    scheduleEnabled?: boolean;
+    notifyType?: string;
+    notifyTarget?: string;
+  }
+): number {
+  const db = getDb();
+  const result = db.prepare(`
+    INSERT OR REPLACE INTO custom_workflows
+      (workflow_id, tenant_id, name, description, category, complexity,
+       estimated_duration, tags, definition, source,
+       schedule, schedule_enabled, notify_type, notify_target, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+  `).run(
+    workflow.id,
+    tenantId,
+    workflow.name,
+    workflow.description,
+    workflow.category,
+    workflow.complexity,
+    workflow.estimatedDuration,
+    JSON.stringify(workflow.tags),
+    JSON.stringify(workflow.definition),
+    workflow.source ?? "user",
+    workflow.schedule ?? null,
+    workflow.scheduleEnabled ? 1 : 0,
+    workflow.notifyType ?? null,
+    workflow.notifyTarget ?? null
+  );
+  return result.lastInsertRowid as number;
+}
+
+export function getCustomWorkflows(tenantId: string): Array<{
+  id: number;
+  workflowId: string;
+  name: string;
+  description: string;
+  category: string;
+  complexity: string;
+  estimatedDuration: string;
+  tags: string[];
+  definition: Record<string, unknown>;
+  source: string;
+  schedule: string | null;
+  scheduleEnabled: boolean;
+  notifyType: string | null;
+  notifyTarget: string | null;
+  lastRunAt: string | null;
+  createdAt: string;
+}> {
+  const rows = getDb().prepare(
+    "SELECT * FROM custom_workflows WHERE tenant_id = ? ORDER BY updated_at DESC"
+  ).all(tenantId) as Array<Record<string, unknown>>;
+
+  return rows.map((r) => ({
+    id: r.id as number,
+    workflowId: r.workflow_id as string,
+    name: r.name as string,
+    description: r.description as string,
+    category: r.category as string,
+    complexity: r.complexity as string,
+    estimatedDuration: r.estimated_duration as string,
+    tags: JSON.parse((r.tags as string) || "[]"),
+    definition: JSON.parse((r.definition as string) || "{}"),
+    source: r.source as string,
+    schedule: r.schedule as string | null,
+    scheduleEnabled: !!(r.schedule_enabled as number),
+    notifyType: r.notify_type as string | null,
+    notifyTarget: r.notify_target as string | null,
+    lastRunAt: r.last_run_at as string | null,
+    createdAt: r.created_at as string,
+  }));
+}
+
+export function deleteCustomWorkflow(workflowId: string, tenantId: string) {
+  getDb().prepare(
+    "DELETE FROM custom_workflows WHERE workflow_id = ? AND tenant_id = ?"
+  ).run(workflowId, tenantId);
+}
+
+export function updateWorkflowSchedule(
+  workflowId: string,
+  tenantId: string,
+  schedule: string | null,
+  enabled: boolean,
+  notifyType?: string,
+  notifyTarget?: string
+) {
+  getDb().prepare(`
+    UPDATE custom_workflows
+    SET schedule = ?, schedule_enabled = ?, notify_type = ?, notify_target = ?, updated_at = datetime('now')
+    WHERE workflow_id = ? AND tenant_id = ?
+  `).run(schedule ?? null, enabled ? 1 : 0, notifyType ?? null, notifyTarget ?? null, workflowId, tenantId);
+}
+
+export function saveWorkflowRun(run: {
+  workflowId: string;
+  tenantId: string;
+  status: string;
+  mode: string;
+  totalSteps: number;
+  completedSteps: number;
+  skippedSteps: number;
+  failedSteps: number;
+  findingsCount: number;
+  reportMd?: string;
+  triggeredBy: string;
+}): number {
+  const db = getDb();
+  const result = db.prepare(`
+    INSERT INTO workflow_runs
+      (workflow_id, tenant_id, status, mode, total_steps, completed_steps,
+       skipped_steps, failed_steps, findings_count, report_md, triggered_by,
+       completed_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+  `).run(
+    run.workflowId, run.tenantId, run.status, run.mode,
+    run.totalSteps, run.completedSteps, run.skippedSteps,
+    run.failedSteps, run.findingsCount, run.reportMd ?? null,
+    run.triggeredBy
+  );
+
+  // Update last_run_at on the custom workflow
+  db.prepare(
+    "UPDATE custom_workflows SET last_run_at = datetime('now') WHERE workflow_id = ? AND tenant_id = ?"
+  ).run(run.workflowId, run.tenantId);
+
+  return result.lastInsertRowid as number;
+}
+
+export function getWorkflowRuns(tenantId: string, workflowId?: string, limit = 20): Array<Record<string, unknown>> {
+  const db = getDb();
+  if (workflowId) {
+    return db.prepare(
+      "SELECT * FROM workflow_runs WHERE tenant_id = ? AND workflow_id = ? ORDER BY started_at DESC LIMIT ?"
+    ).all(tenantId, workflowId, limit) as Array<Record<string, unknown>>;
+  }
+  return db.prepare(
+    "SELECT * FROM workflow_runs WHERE tenant_id = ? ORDER BY started_at DESC LIMIT ?"
+  ).all(tenantId, limit) as Array<Record<string, unknown>>;
 }
