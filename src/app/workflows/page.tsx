@@ -634,19 +634,25 @@ function ExecutionPanel({
                 </div>
               </div>
 
-              {/* Rendered results */}
+              {/* Rendered results — collapsed by default */}
               {isSuccess && step.result ? (
-                <div className="mt-2 ml-10">
-                  <ResultRenderer toolName={step.tool} data={step.result} />
-                  <details className="mt-2">
-                    <summary className="text-[11px] text-gray-400 cursor-pointer hover:text-gray-600 dark:hover:text-gray-300">
-                      View raw JSON
-                    </summary>
-                    <pre className="mt-1 rounded-md bg-gray-100 dark:bg-gray-800 p-2 overflow-x-auto max-h-40 text-[11px] text-gray-500 dark:text-gray-500">
-                      {JSON.stringify(step.result, null, 2)}
-                    </pre>
-                  </details>
-                </div>
+                <details className="mt-2 ml-10 group">
+                  <summary className="text-xs text-indigo-600 dark:text-indigo-400 cursor-pointer hover:text-indigo-800 dark:hover:text-indigo-300 select-none flex items-center gap-1">
+                    <span className="group-open:rotate-90 transition-transform inline-block">▶</span>
+                    View results
+                  </summary>
+                  <div className="mt-2 space-y-2">
+                    <ResultRenderer toolName={step.tool} data={step.result} />
+                    <details className="mt-1">
+                      <summary className="text-[11px] text-gray-400 cursor-pointer hover:text-gray-600 dark:hover:text-gray-300">
+                        Raw JSON
+                      </summary>
+                      <pre className="mt-1 rounded-md bg-gray-100 dark:bg-gray-800 p-2 overflow-x-auto max-h-40 text-[11px] text-gray-500 dark:text-gray-500">
+                        {JSON.stringify(step.result, null, 2)}
+                      </pre>
+                    </details>
+                  </div>
+                </details>
               ) : null}
             </div>
           );
@@ -675,17 +681,23 @@ function ExecutionPanel({
       {allDone ? (
         <div className="p-5 border-t border-gray-100 dark:border-gray-800 bg-indigo-50 dark:bg-indigo-950/30">
           <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">📊 Results Summary</h3>
-          <div className="space-y-3">
+          <div className="space-y-2">
             {steps.filter(s => s.status === "success" && s.result).map((step) => (
-              <div key={step.id} className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-800">
-                <div className="flex items-center justify-between mb-2">
-                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{step.name}</p>
+              <details key={step.id} className="bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 group">
+                <summary className="flex items-center justify-between p-3 cursor-pointer select-none hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <span className="group-open:rotate-90 transition-transform inline-block text-gray-400">▶</span>
+                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{step.name}</span>
+                    <span className="text-xs text-emerald-600 dark:text-emerald-400 font-medium">{summarize(step.tool, step.result)}</span>
+                  </div>
                   <code className="text-[11px] bg-gray-100 dark:bg-gray-800 rounded px-1.5 py-0.5 text-indigo-600 dark:text-indigo-400">
                     {step.tool}
                   </code>
+                </summary>
+                <div className="px-4 pb-4">
+                  <ResultRenderer toolName={step.tool} data={step.result} />
                 </div>
-                <ResultRenderer toolName={step.tool} data={step.result} />
-              </div>
+              </details>
             ))}
           </div>
           <div className="flex gap-2 mt-4">
