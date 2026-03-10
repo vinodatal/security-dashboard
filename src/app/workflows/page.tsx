@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
+import { ResultRenderer } from "./result-renderer";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -40,6 +41,7 @@ interface ExecutionStep {
   name: string;
   tool: string;
   resolvedParams: Record<string, unknown>;
+  params?: Record<string, unknown>;
   status: string;
   result?: unknown;
   error?: string;
@@ -366,12 +368,92 @@ function ExecutionPanel({
 }) {
   const [steps, setSteps] = useState<ExecutionStep[]>(plan.steps ?? []);
   const [runningAll, setRunningAll] = useState(false);
+  const [copied, setCopied] = useState(false);
   const abortRef = useRef(false);
+  const startTimeRef = useRef(Date.now());
 
   const completedCount = steps.filter((s) => s.status === "success").length;
   const failedCount = steps.filter((s) => s.status === "error" || s.status === "failed").length;
   const totalSteps = steps.length;
   const allDone = totalSteps > 0 && completedCount + failedCount === totalSteps;
+
+  const summarize = (toolName: string, data: unknown): string => {
+    if (!data || typeof data !== "object") return "No data";
+    const d = data as Record<string, unknown>;
+    if (d.error) return `⚠ ${String(d.error).substring(0, 120)}`;
+    if (d.alertCount !== undefined) return `${d.alertCount} alerts found`;
+    if (d.incidentCount !== undefined) return `${d.incidentCount} incidents`;
+    if (d.userCount !== undefined) return `${d.userCount} users`;
+    if (d.deviceCount !== undefined) return `${d.deviceCount} devices`;
+    if (d.recordCount !== undefined) return `${d.recordCount} records`;
+    if (d.currentScore !== undefined) return `Score: ${d.currentScore}/${d.maxScore ?? "?"} (${d.percentageScore ?? "?"}%)`;
+    if (d.recommendationCount !== undefined) return `${d.recommendationCount} recommendations`;
+    if (d.findings && Array.isArray(d.findings)) return `${d.findings.length} findings`;
+    if (d.totalRecords !== undefined) return `${d.totalRecords} resources`;
+    if (d.summary && typeof d.summary === "object") {
+      const s = d.summary as Record<string, unknown>;
+      return `${s.total ?? "?"} total — ${s.needsAttention ?? 0} need attention`;
+    }
+    const val = d.value ?? d.alerts ?? d.users ?? d.devices ?? d.signIns ?? d.results ?? d.workflows ?? d.packages;
+    if (Array.isArray(val)) return `${val.length} items returned`;
+    const keys = Object.keys(d).filter(k => !k.startsWith("_")).slice(0, 4);
+    return keys.map(k => {
+      const v = d[k];
+      if (typeof v === "number") return `${k}: ${v}`;
+      if (typeof v === "string" && v.length < 40) return `${k}: ${v}`;
+      if (Array.isArray(v)) return `${k}: ${v.length} items`;
+      return k;
+    }).join(" · ") || "ok";
+  };
+
+  const buildReport = (): string => {
+    const durationSec = Math.round((Date.now() - startTimeRef.current) / 1000);
+    let md = `# ${plan.workflowName} — Report\n\n`;
+    md += `**Generated:** ${new Date().toLocaleString()}  \n`;
+    md += `**Duration:** ${durationSec}s  \n`;
+    md += `**Steps:** ${completedCount} completed, ${failedCount} failed, ${(plan.skippedSteps ?? []).length} skipped\n\n---\n\n`;
+
+    for (const step of steps) {
+      const icon = step.status === "success" ? "✅" : step.status === "error" || step.status === "failed" ? "❌" : "⬜";
+      md += `## ${icon} ${step.name}\n`;
+      md += `**Tool:** \`${step.tool}\``;
+      if (step.duration) md += ` · **Duration:** ${(step.duration / 1000).toFixed(1)}s`;
+      md += `\n\n`;
+
+      if (step.status === "success" && step.result) {
+        md += `**Summary:** ${summarize(step.tool, step.result)}\n\n`;
+        const dataStr = JSON.stringify(step.result, null, 2);
+        md += `<details><summary>Full data</summary>\n\n\`\`\`json\n${dataStr}\n\`\`\`\n</details>\n\n`;
+      } else if (step.status === "error" || step.status === "failed") {
+        md += `**Error:** ${step.error ?? "Unknown error"}\n\n`;
+      }
+    }
+
+    if ((plan.skippedSteps ?? []).length > 0) {
+      md += `## ⏭️ Skipped Steps\n\n`;
+      for (const s of plan.skippedSteps) {
+        md += `- **${s.stepName}** — ${s.reason}\n`;
+      }
+    }
+    return md;
+  };
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(buildReport());
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleDownload = () => {
+    const md = buildReport();
+    const blob = new Blob([md], { type: "text/markdown" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${plan.workflowId}-report-${new Date().toISOString().slice(0, 10)}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
 
   const executeStep = useCallback(
     async (stepIndex: number) => {
@@ -384,9 +466,11 @@ function ExecutionPanel({
 
       const start = Date.now();
       try {
+        const params = { ...(step.resolvedParams ?? step.params ?? {}) };
+        delete (params as Record<string, unknown>).__dynamicParams;
         const result = await api("execute-step", {
           toolName: step.tool,
-          params: step.resolvedParams,
+          params,
         });
         setSteps((prev) =>
           prev.map((s, i) =>
@@ -450,6 +534,7 @@ function ExecutionPanel({
           <span>
             {completedCount}/{totalSteps} steps completed
             {failedCount > 0 ? ` · ${failedCount} failed` : ""}
+            {(plan.skippedSteps ?? []).length > 0 ? ` · ${(plan.skippedSteps ?? []).length} skipped` : ""}
           </span>
           <span>{plan.estimatedDuration}</span>
         </div>
@@ -472,135 +557,145 @@ function ExecutionPanel({
             </button>
           ) : null}
           {completedCount > 0 ? (
-            <button
-              onClick={() => {
-                const report = steps
-                  .filter((s) => s.status === "success")
-                  .map(
-                    (s) =>
-                      `## ${s.name}\nTool: ${s.tool}\n\`\`\`json\n${JSON.stringify(s.result, null, 2).slice(0, 500)}\n\`\`\``,
-                  )
-                  .join("\n\n");
-                navigator.clipboard.writeText(
-                  `# ${plan.workflowName} Report\n\n${report}`,
-                );
-              }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-gray-300 dark:border-gray-700 px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-            >
-              📋 Copy Report
-            </button>
+            <>
+              <button
+                onClick={handleCopy}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-indigo-100 dark:bg-indigo-950 text-indigo-700 dark:text-indigo-300 px-4 py-2 text-sm font-medium hover:bg-indigo-200 dark:hover:bg-indigo-900 transition-colors"
+              >
+                {copied ? "✓ Copied!" : "📋 Copy Report"}
+              </button>
+              <button
+                onClick={handleDownload}
+                className="inline-flex items-center gap-1.5 rounded-lg bg-purple-100 dark:bg-purple-950 text-purple-700 dark:text-purple-300 px-4 py-2 text-sm font-medium hover:bg-purple-200 dark:hover:bg-purple-900 transition-colors"
+              >
+                ⬇ Download .md
+              </button>
+            </>
           ) : null}
         </div>
       </div>
 
       {/* Steps */}
       <div className="divide-y divide-gray-100 dark:divide-gray-800">
-        {steps.map((step, idx) => (
-          <StepRow
-            key={step.id}
-            step={step}
-            index={idx}
-            onRun={() => executeStep(idx)}
-            isRunningAll={runningAll}
-          />
-        ))}
+        {steps.map((step, idx) => {
+          const isRunning = step.status === "running";
+          const isSuccess = step.status === "success";
+          const isError = step.status === "error" || step.status === "failed";
+          const isDone = isSuccess || isError;
+
+          return (
+            <div key={step.id} className="px-5 py-3">
+              <div className="flex items-center gap-3">
+                <span className="text-xs text-gray-400 w-5 text-right">{idx + 1}</span>
+                <StepStatusIcon status={step.status} />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {step.name}
+                    </span>
+                    <code className="text-[11px] bg-gray-100 dark:bg-gray-800 rounded px-1.5 py-0.5 text-indigo-600 dark:text-indigo-400 flex-shrink-0">
+                      {step.tool}
+                    </code>
+                    {step.forEach ? (
+                      <span className="text-[11px] text-purple-500">⟳ forEach</span>
+                    ) : null}
+                    {step.humanGate ? (
+                      <span className="text-[11px] text-amber-500">⚠ approval</span>
+                    ) : null}
+                  </div>
+                  {/* Inline result summary — always visible when done */}
+                  {isSuccess && step.result ? (
+                    <p className="text-xs text-emerald-600 dark:text-emerald-400 mt-0.5 font-medium">
+                      {summarize(step.tool, step.result)}
+                    </p>
+                  ) : null}
+                  {isError ? (
+                    <p className="text-xs text-red-600 dark:text-red-400 mt-0.5">
+                      {step.error ?? "Failed"}
+                    </p>
+                  ) : null}
+                </div>
+
+                <div className="flex items-center gap-2 flex-shrink-0">
+                  {step.duration ? (
+                    <span className="text-[11px] text-gray-400">
+                      {(step.duration / 1000).toFixed(1)}s
+                    </span>
+                  ) : null}
+                  {!isDone && !isRunning ? (
+                    <button
+                      onClick={() => executeStep(idx)}
+                      disabled={runningAll}
+                      className="rounded-md bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 px-2.5 py-1 text-xs font-medium hover:bg-indigo-100 dark:hover:bg-indigo-900 disabled:opacity-40 transition-colors"
+                    >
+                      Run
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+
+              {/* Rendered results */}
+              {isSuccess && step.result ? (
+                <div className="mt-2 ml-10">
+                  <ResultRenderer toolName={step.tool} data={step.result} />
+                  <details className="mt-2">
+                    <summary className="text-[11px] text-gray-400 cursor-pointer hover:text-gray-600 dark:hover:text-gray-300">
+                      View raw JSON
+                    </summary>
+                    <pre className="mt-1 rounded-md bg-gray-100 dark:bg-gray-800 p-2 overflow-x-auto max-h-40 text-[11px] text-gray-500 dark:text-gray-500">
+                      {JSON.stringify(step.result, null, 2)}
+                    </pre>
+                  </details>
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
       </div>
 
       {/* Skipped steps */}
-      {plan.skippedSteps.length > 0 ? (
+      {(plan.skippedSteps ?? []).length > 0 ? (
         <div className="p-5 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-950">
-          <h4 className="text-sm font-semibold text-gray-600 dark:text-gray-400 mb-2">
-            Skipped Steps
-          </h4>
-          <ul className="space-y-1 text-xs text-gray-500 dark:text-gray-500">
-            {plan.skippedSteps.map((s) => (
-              <li key={s.stepId}>
-                <span className="font-medium">{s.stepName}</span> — {s.reason}
-              </li>
-            ))}
-          </ul>
+          <details>
+            <summary className="text-sm font-semibold text-gray-600 dark:text-gray-400 cursor-pointer">
+              ⏭️ {(plan.skippedSteps ?? []).length} steps skipped
+            </summary>
+            <ul className="mt-2 space-y-1 text-xs text-gray-500 dark:text-gray-500">
+              {(plan.skippedSteps ?? []).map((s) => (
+                <li key={s.stepId}>
+                  <span className="font-medium">{s.stepName}</span> — {s.reason}
+                </li>
+              ))}
+            </ul>
+          </details>
         </div>
       ) : null}
-    </div>
-  );
-}
 
-function StepRow({
-  step,
-  index,
-  onRun,
-  isRunningAll,
-}: {
-  step: ExecutionStep;
-  index: number;
-  onRun: () => void;
-  isRunningAll: boolean;
-}) {
-  const [expanded, setExpanded] = useState(false);
-  const isRunning = step.status === "running";
-  const isDone = step.status === "success" || step.status === "error";
-
-  return (
-    <div className="px-5 py-3">
-      <div className="flex items-center gap-3">
-        <span className="text-xs text-gray-400 w-5 text-right">{index + 1}</span>
-        <StepStatusIcon status={step.status} />
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">
-              {step.name}
-            </span>
-            <code className="hidden sm:inline text-[11px] bg-gray-100 dark:bg-gray-800 rounded px-1.5 py-0.5 text-indigo-600 dark:text-indigo-400 flex-shrink-0">
-              {step.tool}
-            </code>
+      {/* Results summary after completion */}
+      {allDone ? (
+        <div className="p-5 border-t border-gray-100 dark:border-gray-800 bg-indigo-50 dark:bg-indigo-950/30">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">📊 Results Summary</h3>
+          <div className="space-y-3">
+            {steps.filter(s => s.status === "success" && s.result).map((step) => (
+              <div key={step.id} className="bg-white dark:bg-gray-900 rounded-lg p-4 border border-gray-200 dark:border-gray-800">
+                <div className="flex items-center justify-between mb-2">
+                  <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{step.name}</p>
+                  <code className="text-[11px] bg-gray-100 dark:bg-gray-800 rounded px-1.5 py-0.5 text-indigo-600 dark:text-indigo-400">
+                    {step.tool}
+                  </code>
+                </div>
+                <ResultRenderer toolName={step.tool} data={step.result} />
+              </div>
+            ))}
           </div>
-          {step.forEach ? (
-            <span className="text-[11px] text-gray-400">
-              ↻ forEach: {step.forEach}
-            </span>
-          ) : null}
-          {step.humanGate ? (
-            <span className="text-[11px] text-amber-500">⚠ Manual approval required</span>
-          ) : null}
-        </div>
-
-        <div className="flex items-center gap-2 flex-shrink-0">
-          {step.duration ? (
-            <span className="text-[11px] text-gray-400">
-              {(step.duration / 1000).toFixed(1)}s
-            </span>
-          ) : null}
-          {!isDone && !isRunning ? (
-            <button
-              onClick={onRun}
-              disabled={isRunningAll}
-              className="rounded-md bg-indigo-50 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 px-2.5 py-1 text-xs font-medium hover:bg-indigo-100 dark:hover:bg-indigo-900 disabled:opacity-40 transition-colors"
-            >
-              Run
+          <div className="flex gap-2 mt-4">
+            <button onClick={handleCopy} className="rounded-lg bg-indigo-600 hover:bg-indigo-700 px-4 py-2 text-sm font-medium text-white transition-colors">
+              {copied ? "✓ Copied!" : "📋 Copy Full Report"}
             </button>
-          ) : null}
-          {isDone ? (
-            <button
-              onClick={() => setExpanded((p) => !p)}
-              className="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
-            >
-              {expanded ? "▲" : "▼"}
+            <button onClick={handleDownload} className="rounded-lg bg-purple-600 hover:bg-purple-700 px-4 py-2 text-sm font-medium text-white transition-colors">
+              ⬇ Download as Markdown
             </button>
-          ) : null}
-        </div>
-      </div>
-
-      {expanded && isDone ? (
-        <div className="mt-2 ml-10 text-xs">
-          {step.status === "error" ? (
-            <div className="rounded-md bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 p-2 text-red-700 dark:text-red-300">
-              {step.error}
-            </div>
-          ) : (
-            <pre className="rounded-md bg-gray-100 dark:bg-gray-800 p-2 overflow-x-auto max-h-48 text-gray-700 dark:text-gray-300">
-              {JSON.stringify(step.result, null, 2)?.slice(0, 2000)}
-            </pre>
-          )}
+          </div>
         </div>
       ) : null}
     </div>
