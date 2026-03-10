@@ -4,7 +4,7 @@ import path from "path";
 
 const MCP_SERVER_PATH = path.resolve(process.cwd(), "../security-scanner-sample/dist/server.js");
 const DEFAULT_TIMEOUT_MS = 30_000;
-const SLOW_TOOLS = new Set(["detect_privileged_user_risks", "search_purview_audit", "get_data_security_posture"]);
+const SLOW_TOOLS = new Set(["detect_privileged_user_risks", "search_purview_audit", "get_data_security_posture", "assess_environment"]);
 const SLOW_TIMEOUT_MS = 90_000;
 
 // Persistent client pool

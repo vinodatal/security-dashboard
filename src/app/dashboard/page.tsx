@@ -5,6 +5,7 @@ import { useEffect, useState, Suspense, useRef } from "react";
 import { Sparkline } from "./sparkline";
 import { InvestigationPane } from "./investigation-pane";
 import { ThemeToggle } from "./theme-toggle";
+import { WorkflowPanel } from "./workflow-panel";
 
 function Card({ title, icon, children, loading }: { title: string; icon: string; children: React.ReactNode; loading: boolean }) {
   return (
@@ -215,6 +216,11 @@ function DashboardContent() {
               Disconnect
             </button>
           </div>
+        </div>
+
+        {/* Workflow Engine */}
+        <div className="mb-4">
+          <WorkflowPanel />
         </div>
 
         {/* Row 1: Score, Alerts, Risky Users */}
