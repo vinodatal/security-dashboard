@@ -369,6 +369,9 @@ function ExecutionPanel({
   const [steps, setSteps] = useState<ExecutionStep[]>(plan.steps ?? []);
   const [runningAll, setRunningAll] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [analysis, setAnalysis] = useState<string | null>(null);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisError, setAnalysisError] = useState("");
   const abortRef = useRef(false);
   const startTimeRef = useRef(Date.now());
 
