@@ -331,7 +331,7 @@ function SkillCard({
 }) {
   const [expanded, setExpanded] = useState(false);
 
-  const isCustom = skill.source === "custom";
+  const isCustom = skill.source !== "built-in" && skill.source !== undefined;
   const icon = categoryIcon(skill.category);
 
   return (
@@ -411,7 +411,7 @@ function SkillCard({
         </button>
         {isCustom ? (
           <button
-            onClick={() => onDelete(skill.id)}
+            onClick={() => onDelete(skill.skillId ?? skill.id)}
             className="ml-auto text-sm text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300 transition-colors"
           >
             🗑 Delete
@@ -814,7 +814,7 @@ function SkillsContent() {
     if (!confirm("Delete this custom skill?")) return;
     try {
       await api("delete", { skillId });
-      setSkills((prev) => prev.filter((s) => s.id !== skillId));
+      setSkills((prev) => prev.filter((s) => s.id !== skillId && s.skillId !== skillId));
     } catch (e) {
       alert(e instanceof Error ? e.message : "Delete failed");
     }
@@ -823,7 +823,8 @@ function SkillsContent() {
   /* ---- filtering ---- */
   const filtered = skills.filter((s) => {
     if (categoryFilter !== "all" && s.category !== categoryFilter) return false;
-    if (sourceFilter !== "all" && s.source !== sourceFilter) return false;
+    if (sourceFilter === "built-in" && s.source !== "built-in") return false;
+    if (sourceFilter === "custom" && s.source === "built-in") return false;
     if (search.trim()) {
       const q = search.toLowerCase();
       const haystack = `${s.name} ${s.description} ${(s.tags ?? []).join(" ")}`.toLowerCase();
