@@ -430,6 +430,117 @@ function SkillCard({
 }
 
 /* ------------------------------------------------------------------ */
+/*  TestQueriesPanel — run KQL queries to verify they work             */
+/* ------------------------------------------------------------------ */
+
+interface SkillQueryForTest {
+  id?: string;
+  name: string;
+  query: string;
+  target?: string;
+  description?: string;
+}
+
+function TestQueriesPanel({
+  queries,
+  api,
+}: {
+  queries: SkillQueryForTest[];
+  api: (action: string, body?: Record<string, unknown>) => Promise<unknown>;
+}) {
+  const [results, setResults] = useState<Map<number, { status: string; data?: unknown; error?: string; rows?: number }>>(new Map());
+  const [testing, setTesting] = useState<number | null>(null);
+
+  const testQuery = async (idx: number, q: SkillQueryForTest) => {
+    setTesting(idx);
+    const newResults = new Map(results);
+    newResults.set(idx, { status: "running" });
+    setResults(newResults);
+
+    try {
+      const toolName = q.target === "sentinel" ? "query_sentinel" : "run_hunting_query";
+      // Call the workflow API's execute-step to run the query
+      const res = await fetch("/api/workflows", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "execute-step",
+          toolName,
+          params: { query: q.query },
+        }),
+      });
+      const data = await res.json();
+      const updated = new Map(results);
+      if (data.error) {
+        updated.set(idx, { status: "error", error: String(data.error).substring(0, 200) });
+      } else {
+        const rows = data.resultCount ?? data.results?.length ?? (Array.isArray(data.value) ? data.value.length : 0);
+        updated.set(idx, { status: "success", data, rows });
+      }
+      setResults(updated);
+    } catch (e) {
+      const updated = new Map(results);
+      updated.set(idx, { status: "error", error: e instanceof Error ? e.message : "Failed" });
+      setResults(updated);
+    } finally {
+      setTesting(null);
+    }
+  };
+
+  const testAll = async () => {
+    for (let i = 0; i < queries.length; i++) {
+      await testQuery(i, queries[i]);
+    }
+  };
+
+  return (
+    <div className="bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-lg p-4">
+      <div className="flex items-center justify-between mb-2">
+        <h4 className="text-sm font-semibold text-gray-900 dark:text-gray-100">🧪 Test Queries</h4>
+        <button
+          onClick={testAll}
+          disabled={testing !== null}
+          className="text-xs bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-3 py-1.5 rounded-lg font-medium transition-colors"
+        >
+          {testing !== null ? "Testing..." : "▶ Test All"}
+        </button>
+      </div>
+      <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
+        Run queries against your tenant to verify they return valid results
+      </p>
+      <div className="space-y-2">
+        {queries.map((q, idx) => {
+          const r = results.get(idx);
+          return (
+            <div key={idx} className="flex items-center justify-between bg-white dark:bg-gray-900 rounded px-3 py-2 border border-gray-200 dark:border-gray-700">
+              <div className="min-w-0 flex-1">
+                <span className="text-xs font-medium text-gray-700 dark:text-gray-300">{q.name}</span>
+                {r?.status === "success" ? (
+                  <span className="ml-2 text-xs text-emerald-600 dark:text-emerald-400">✅ {r.rows} rows</span>
+                ) : r?.status === "error" ? (
+                  <span className="ml-2 text-xs text-red-500">❌ {r.error}</span>
+                ) : r?.status === "running" ? (
+                  <span className="ml-2 text-xs text-indigo-500">🔄 running...</span>
+                ) : null}
+              </div>
+              {!r || r.status === "error" ? (
+                <button
+                  onClick={() => testQuery(idx, q)}
+                  disabled={testing !== null}
+                  className="text-xs text-indigo-600 hover:text-indigo-800 dark:text-indigo-400 font-medium disabled:opacity-50"
+                >
+                  Run
+                </button>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /*  NLCreatorModal                                                     */
 /* ------------------------------------------------------------------ */
 
@@ -604,6 +715,11 @@ function NLCreatorModal({
 
                   <SkillDetails skill={generated} />
                 </div>
+
+                {/* Test Queries button */}
+                {(generated.queries ?? []).length > 0 ? (
+                  <TestQueriesPanel queries={generated.queries ?? []} api={api} />
+                ) : null}
               </div>
 
               {error ? (

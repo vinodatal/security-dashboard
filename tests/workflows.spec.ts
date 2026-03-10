@@ -52,8 +52,11 @@ const WORKFLOWS = [
 
 /** Call the workflows API directly (faster than clicking through UI) */
 async function apiCall(page: Page, action: string, body: Record<string, unknown> = {}) {
+  // LLM-based actions need longer timeouts
+  const slow = ["analyze", "create-from-nl"].includes(action);
   const response = await page.request.post("/api/workflows", {
     data: { action, ...body },
+    timeout: slow ? 60_000 : 15_000,
   });
   expect(response.ok(), `API ${action} failed: ${response.status()}`).toBeTruthy();
   return response.json();
@@ -521,12 +524,13 @@ test.describe("Skills Catalog", () => {
   });
 
   test("should create skill from NL, save, verify in catalog, delete", async ({ page }) => {
-    // Create via API
+    // Create via API (LLM call — needs longer timeout)
     const genRes = await page.request.post("/api/skills", {
       data: {
         action: "create-from-nl",
         description: "Detect brute force attacks against Azure AD by looking for multiple failed sign-ins from the same IP",
       },
+      timeout: 60_000,
     });
     expect(genRes.ok()).toBeTruthy();
     const genData = await genRes.json();
@@ -559,10 +563,11 @@ test.describe("Skills Catalog", () => {
     expect(delRes.ok()).toBeTruthy();
     console.log(`  Deleted: ${skill.id} ✓`);
 
-    // Verify deleted
+    // Verify this specific skill is gone
     const afterRes = await page.request.post("/api/skills", { data: { action: "list" } });
     const afterData = await afterRes.json();
-    expect(afterData.customCount).toBe(0);
+    const stillExists = (afterData.skills ?? []).some((s: Record<string, unknown>) => s.id === skill.id || s.skillId === skill.id);
+    expect(stillExists).toBeFalsy();
     console.log("  Verified cleanup ✓");
   });
 
