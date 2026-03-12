@@ -145,9 +145,27 @@ Do NOT include markdown code fences around the JSON. Output ONLY the JSON object
         }
       }
 
+      case "upload-md": {
+        if (!body.content || !body.filename) {
+          return NextResponse.json({ error: "content and filename required" }, { status: 400 });
+        }
+        const { parseMarkdownSkill } = await import("@/lib/skills/md-parser");
+        const skill = parseMarkdownSkill(String(body.content), String(body.filename));
+        return NextResponse.json({
+          skill,
+          parsed: {
+            queriesFound: skill.queries?.length ?? 0,
+            remediationFound: skill.remediation?.length ?? 0,
+            hasInstructions: !!skill.instructions,
+            category: skill.category,
+            tags: skill.tags,
+          },
+        });
+      }
+
       default:
         return NextResponse.json(
-          { error: `Unknown action: ${action}. Use: list, get, save, delete, create-from-nl` },
+          { error: `Unknown action: ${action}. Use: list, get, save, delete, create-from-nl, upload-md` },
           { status: 400 }
         );
     }
