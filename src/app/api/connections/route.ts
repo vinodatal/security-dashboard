@@ -138,8 +138,8 @@ export async function POST(req: NextRequest) {
               type: "microsoft",
               transport: "http-sse",
               config: { url: "https://sentinel.microsoft.com/mcp/data-exploration" },
-              authType: "bearer",
-              authNote: "Requires Entra ID token with Security Reader role. Get token: az account get-access-token --resource https://management.azure.com",
+              authType: "az-cli",
+              authNote: "Uses your az login session automatically — no token needed",
               docsUrl: "https://learn.microsoft.com/en-us/azure/sentinel/datalake/sentinel-mcp-data-exploration-tool",
             },
             {
@@ -149,8 +149,8 @@ export async function POST(req: NextRequest) {
               type: "microsoft",
               transport: "http-sse",
               config: { url: "https://sentinel.microsoft.com/mcp/triage" },
-              authType: "bearer",
-              authNote: "Requires Entra ID token with Security Reader role",
+              authType: "az-cli",
+              authNote: "Uses your az login session automatically — no token needed",
               docsUrl: "https://learn.microsoft.com/en-us/azure/sentinel/datalake/sentinel-mcp-triage-tool",
             },
             {
@@ -174,8 +174,8 @@ export async function POST(req: NextRequest) {
         }
         // Fetch templates and find the requested one
         const templates: Array<Record<string, unknown>> = [
-          { id: "sentinel-data-exploration", name: "Sentinel Data Exploration", type: "microsoft", transport: "http-sse", config: { url: "https://sentinel.microsoft.com/mcp/data-exploration" }, authType: "bearer" },
-          { id: "sentinel-triage", name: "Sentinel Triage", type: "microsoft", transport: "http-sse", config: { url: "https://sentinel.microsoft.com/mcp/triage" }, authType: "bearer" },
+          { id: "sentinel-data-exploration", name: "Sentinel Data Exploration", type: "microsoft", transport: "http-sse", config: { url: "https://sentinel.microsoft.com/mcp/data-exploration" }, authType: "az-cli" },
+          { id: "sentinel-triage", name: "Sentinel Triage", type: "microsoft", transport: "http-sse", config: { url: "https://sentinel.microsoft.com/mcp/triage" }, authType: "az-cli" },
           { id: "github-mcp", name: "GitHub MCP", type: "community", transport: "stdio", config: { command: "npx", args: ["-y", "@modelcontextprotocol/server-github"] }, authType: "env-vars" },
         ];
         const tmpl = templates.find(t => t.id === body.templateId);

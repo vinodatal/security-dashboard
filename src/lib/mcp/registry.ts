@@ -205,7 +205,19 @@ export async function connectAndDiscover(
 
       // Build auth headers
       const headers: Record<string, string> = { ...(config.headers ?? {}) };
-      if (conn.authType === "bearer" && conn.authConfig?.token) {
+
+      if (conn.authType === "az-cli") {
+        // Auto-get token from Azure CLI — same as we do for our own auth
+        const { exec } = await import("child_process");
+        const { promisify } = await import("util");
+        const execAsync = promisify(exec);
+        const resource = conn.authConfig?.resource ?? "https://management.azure.com";
+        const tenantFlag = conn.authConfig?.tenantId ? ` --tenant ${conn.authConfig.tenantId}` : "";
+        const { stdout } = await execAsync(
+          `az account get-access-token --resource ${resource}${tenantFlag} --query accessToken -o tsv`
+        );
+        headers["Authorization"] = `Bearer ${stdout.trim()}`;
+      } else if (conn.authType === "bearer" && conn.authConfig?.token) {
         headers["Authorization"] = `Bearer ${conn.authConfig.token}`;
       } else if (conn.authType === "api-key" && conn.authConfig?.headerName && conn.authConfig?.key) {
         headers[conn.authConfig.headerName] = conn.authConfig.key;
