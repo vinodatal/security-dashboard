@@ -199,11 +199,26 @@ export async function connectAndDiscover(
 
       client = new Client({ name: "security-dashboard", version: "1.0.0" });
       await client.connect(transport);
+    } else if (conn.transport === "http-sse") {
+      const config = conn.config as HttpConnectionConfig;
+      const { SSEClientTransport } = await import("@modelcontextprotocol/sdk/client/sse.js");
+
+      // Build auth headers
+      const headers: Record<string, string> = { ...(config.headers ?? {}) };
+      if (conn.authType === "bearer" && conn.authConfig?.token) {
+        headers["Authorization"] = `Bearer ${conn.authConfig.token}`;
+      } else if (conn.authType === "api-key" && conn.authConfig?.headerName && conn.authConfig?.key) {
+        headers[conn.authConfig.headerName] = conn.authConfig.key;
+      }
+
+      const transport = new SSEClientTransport(new URL(config.url), {
+        requestInit: { headers },
+      });
+
+      client = new Client({ name: "security-dashboard", version: "1.0.0" });
+      await client.connect(transport);
     } else {
-      // HTTP/SSE transport — placeholder for remote MCP servers
-      // const config = conn.config as HttpConnectionConfig;
-      // const transport = new SSEClientTransport(new URL(config.url), { headers: ... });
-      return { tools: [], error: "HTTP/SSE transport not yet implemented. Coming soon — needed for Sentinel MCP." };
+      return { tools: [], error: `Unknown transport: ${conn.transport}` };
     }
 
     // Discover tools

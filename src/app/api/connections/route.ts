@@ -127,9 +127,75 @@ export async function POST(req: NextRequest) {
         return NextResponse.json(result);
       }
 
+      case "templates": {
+        // Pre-built connection templates for known MCP servers
+        return NextResponse.json({
+          templates: [
+            {
+              id: "sentinel-data-exploration",
+              name: "Microsoft Sentinel — Data Exploration",
+              description: "Search tables, query the data lake, analyze entities in your Sentinel workspace",
+              type: "microsoft",
+              transport: "http-sse",
+              config: { url: "https://sentinel.microsoft.com/mcp/data-exploration" },
+              authType: "bearer",
+              authNote: "Requires Entra ID token with Security Reader role. Get token: az account get-access-token --resource https://management.azure.com",
+              docsUrl: "https://learn.microsoft.com/en-us/azure/sentinel/datalake/sentinel-mcp-data-exploration-tool",
+            },
+            {
+              id: "sentinel-triage",
+              name: "Microsoft Sentinel — Triage",
+              description: "Triage incidents and hunt over your security data",
+              type: "microsoft",
+              transport: "http-sse",
+              config: { url: "https://sentinel.microsoft.com/mcp/triage" },
+              authType: "bearer",
+              authNote: "Requires Entra ID token with Security Reader role",
+              docsUrl: "https://learn.microsoft.com/en-us/azure/sentinel/datalake/sentinel-mcp-triage-tool",
+            },
+            {
+              id: "github-mcp",
+              name: "GitHub MCP Server",
+              description: "Search code, manage issues and PRs, list repos",
+              type: "community",
+              transport: "stdio",
+              config: { command: "npx", args: ["-y", "@modelcontextprotocol/server-github"] },
+              authType: "env-vars",
+              authNote: "Requires GITHUB_TOKEN environment variable",
+              docsUrl: "https://github.com/modelcontextprotocol/servers/tree/main/src/github",
+            },
+          ],
+        });
+      }
+
+      case "add-from-template": {
+        if (!body.templateId) {
+          return NextResponse.json({ error: "templateId required" }, { status: 400 });
+        }
+        // Fetch templates and find the requested one
+        const templates: Array<Record<string, unknown>> = [
+          { id: "sentinel-data-exploration", name: "Sentinel Data Exploration", type: "microsoft", transport: "http-sse", config: { url: "https://sentinel.microsoft.com/mcp/data-exploration" }, authType: "bearer" },
+          { id: "sentinel-triage", name: "Sentinel Triage", type: "microsoft", transport: "http-sse", config: { url: "https://sentinel.microsoft.com/mcp/triage" }, authType: "bearer" },
+          { id: "github-mcp", name: "GitHub MCP", type: "community", transport: "stdio", config: { command: "npx", args: ["-y", "@modelcontextprotocol/server-github"] }, authType: "env-vars" },
+        ];
+        const tmpl = templates.find(t => t.id === body.templateId);
+        if (!tmpl) return NextResponse.json({ error: "Template not found" }, { status: 404 });
+
+        saveConnection(tenantId, {
+          id: tmpl.id as string,
+          name: tmpl.name as string,
+          type: tmpl.type as string,
+          transport: tmpl.transport as string,
+          config: tmpl.config as Record<string, unknown>,
+          authType: tmpl.authType as string,
+          authConfig: body.authConfig,
+        });
+        return NextResponse.json({ saved: true, connectionId: tmpl.id });
+      }
+
       default:
         return NextResponse.json(
-          { error: `Unknown action: ${action}. Use: list, add, remove, discover, all-tools, call` },
+          { error: `Unknown action. Use: list, add, remove, discover, all-tools, call, templates, add-from-template` },
           { status: 400 }
         );
     }
