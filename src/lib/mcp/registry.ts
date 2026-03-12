@@ -207,16 +207,30 @@ export async function connectAndDiscover(
       const headers: Record<string, string> = { ...(config.headers ?? {}) };
 
       if (conn.authType === "az-cli") {
-        // Auto-get token from Azure CLI — same as we do for our own auth
         const { exec } = await import("child_process");
         const { promisify } = await import("util");
         const execAsync = promisify(exec);
-        const resource = conn.authConfig?.resource ?? "https://management.azure.com";
+        // Derive resource from server URL if not explicitly set
+        const resource = conn.authConfig?.resource ??
+          (config.url.includes("sentinel.microsoft.com") ? "https://management.azure.com" :
+           config.url.includes("graph.microsoft.com") ? "https://graph.microsoft.com" :
+           "https://management.azure.com");
         const tenantFlag = conn.authConfig?.tenantId ? ` --tenant ${conn.authConfig.tenantId}` : "";
-        const { stdout } = await execAsync(
-          `az account get-access-token --resource ${resource}${tenantFlag} --query accessToken -o tsv`
-        );
-        headers["Authorization"] = `Bearer ${stdout.trim()}`;
+        try {
+          const { stdout } = await execAsync(
+            `az account get-access-token --resource ${resource}${tenantFlag} --query accessToken -o tsv`
+          );
+          headers["Authorization"] = `Bearer ${stdout.trim()}`;
+        } catch (authErr) {
+          const msg = authErr instanceof Error ? authErr.message : String(authErr);
+          if (msg.includes("AADSTS500011") || msg.includes("not found in the tenant")) {
+            return { tools: [], error: `This tenant doesn't have the required service enabled. The Sentinel MCP server requires the Sentinel data lake preview to be onboarded. See: https://learn.microsoft.com/en-us/azure/sentinel/datalake/sentinel-lake-onboarding` };
+          }
+          if (msg.includes("az login")) {
+            return { tools: [], error: "Not logged in to Azure CLI. Run 'az login' first." };
+          }
+          return { tools: [], error: `Azure CLI auth failed: ${msg.substring(0, 200)}` };
+        }
       } else if (conn.authType === "bearer" && conn.authConfig?.token) {
         headers["Authorization"] = `Bearer ${conn.authConfig.token}`;
       } else if (conn.authType === "api-key" && conn.authConfig?.headerName && conn.authConfig?.key) {
