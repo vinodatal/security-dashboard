@@ -542,6 +542,104 @@ function AddConnectionForm({
   );
 }
 
+// ── Quick Add Templates ────────────────────────────────────────────────────────
+
+interface Template {
+  id: string;
+  name: string;
+  description: string;
+  type: string;
+  authNote: string;
+  docsUrl: string;
+}
+
+function QuickAddTemplates({ onAdded }: { onAdded: () => void }) {
+  const [templates, setTemplates] = useState<Template[]>([]);
+  const [adding, setAdding] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch("/api/connections", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "templates" }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setTemplates(data.templates ?? []);
+        }
+      } catch { /* ignore */ }
+      setLoaded(true);
+    })();
+  }, []);
+
+  if (!loaded || templates.length === 0) return null;
+
+  const handleAdd = async (tmpl: Template) => {
+    setAdding(tmpl.id);
+    try {
+      const res = await fetch("/api/connections", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "add-from-template", templateId: tmpl.id }),
+      });
+      if (res.ok) {
+        // Auto-discover after adding
+        await fetch("/api/connections", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "discover", connectionId: tmpl.id }),
+        });
+        onAdded();
+      }
+    } catch { /* ignore */ }
+    setAdding(null);
+  };
+
+  const typeIcons: Record<string, string> = {
+    microsoft: "🔷",
+    community: "🌐",
+    custom: "🔧",
+  };
+
+  return (
+    <div>
+      <h3 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-2">⚡ Quick Add</h3>
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+        {templates.map((tmpl) => (
+          <div key={tmpl.id} className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4 flex flex-col">
+            <div className="flex items-center gap-2 mb-1">
+              <span>{typeIcons[tmpl.type] ?? "📦"}</span>
+              <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{tmpl.name}</span>
+            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-2 flex-1">{tmpl.description}</p>
+            <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-3">{tmpl.authNote}</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleAdd(tmpl)}
+                disabled={adding !== null}
+                className="flex-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 px-3 py-1.5 text-xs font-medium text-white transition-colors"
+              >
+                {adding === tmpl.id ? "Adding..." : "➕ Add & Connect"}
+              </button>
+              <a
+                href={tmpl.docsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="rounded-lg border border-gray-300 dark:border-gray-700 px-3 py-1.5 text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
+              >
+                Docs
+              </a>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Discovered Tools Section ───────────────────────────────────────────────────
 
 function ToolsSection() {
@@ -763,6 +861,9 @@ function ConnectionsPageContent() {
 
         {/* Add Connection */}
         <AddConnectionForm onSaved={handleSaved} />
+
+        {/* Quick Add Templates */}
+        <QuickAddTemplates onAdded={handleSaved} />
 
         {/* Discovered Tools */}
         <ToolsSection key={toolsKey} />
