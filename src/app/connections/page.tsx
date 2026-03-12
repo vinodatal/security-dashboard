@@ -718,29 +718,47 @@ function ToolsSection() {
           No tools match &quot;{search}&quot;
         </p>
       ) : (
-        <div className="space-y-4 max-h-[500px] overflow-y-auto">
-          {serverKeys.map((server) => (
-            <div key={server}>
-              <h3 className="text-xs font-semibold text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-2">
-                {server} ({grouped[server].length})
-              </h3>
-              <div className="space-y-1">
-                {grouped[server].map((tool) => (
-                  <div
-                    key={tool.qualifiedName}
-                    className="flex items-start gap-2 px-3 py-2 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors"
-                  >
-                    <span className="text-xs font-mono text-blue-600 dark:text-blue-400 whitespace-nowrap pt-0.5">
-                      {tool.qualifiedName}
-                    </span>
-                    <span className="text-xs text-gray-600 dark:text-gray-400 line-clamp-2">
-                      {tool.description}
-                    </span>
+        <div className="space-y-2">
+          {serverKeys.map((server) => {
+            const serverTools = grouped[server];
+            const serverIcon = server === "built-in" ? "🔧" : server.includes("sentinel") ? "🔷" : server.includes("github") ? "🌐" : "📦";
+            return (
+              <details key={server} open={serverKeys.length <= 2} className="group border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                <summary className="flex items-center justify-between px-4 py-3 cursor-pointer select-none bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800">
+                  <div className="flex items-center gap-2">
+                    <span className="group-open:rotate-90 transition-transform text-gray-400 text-xs">▶</span>
+                    <span>{serverIcon}</span>
+                    <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{server}</span>
+                    <span className="text-xs bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300 px-2 py-0.5 rounded-full">{serverTools.length} tools</span>
                   </div>
-                ))}
-              </div>
-            </div>
-          ))}
+                </summary>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/30">
+                        <th className="px-4 py-2 text-left font-semibold text-gray-600 dark:text-gray-400 w-1/3">Tool</th>
+                        <th className="px-4 py-2 text-left font-semibold text-gray-600 dark:text-gray-400">Description</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                      {serverTools.map((tool) => (
+                        <tr key={tool.qualifiedName} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
+                          <td className="px-4 py-2 align-top">
+                            <code className="text-xs font-mono text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950 px-1.5 py-0.5 rounded">
+                              {tool.name}
+                            </code>
+                          </td>
+                          <td className="px-4 py-2 text-gray-600 dark:text-gray-400">
+                            {tool.description || "—"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            );
+          })}
         </div>
       )}
     </div>
