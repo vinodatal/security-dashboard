@@ -147,7 +147,7 @@ export function selectRelevantSkills(
       };
       if ((catMap[context.category] ?? []).includes(skill.category)) return true;
     }
-    if (context.tags && skill.tags.some((t) => context.tags!.includes(t))) return true;
+    if (context.tags && (skill.tags ?? []).some((t) => context.tags!.includes(t))) return true;
     return false;
   });
 }
